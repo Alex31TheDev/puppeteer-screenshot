@@ -1,0 +1,25 @@
+{
+    "name": "puppeteer-screenshot",
+    "main": "index.js",
+    "type": "module",
+    "private": true,
+    "scripts": {
+        "format": "prettier --config .prettierrc --write **/*.{js,cjs,json}",
+        "lint": "eslint . --config .eslintrc.json --ignore-path .gitignore --ext .js"
+    },
+    "dependencies": {
+        "bcrypt": "^5.1.1",
+        "body-parser": "^1.20.3",
+        "express": "^4.21.2",
+        "jsonwebtoken": "^9.0.2",
+        "morgan": "^1.10.0",
+        "puppeteer": "^23.11.1",
+        "puppeteer-extra": "^3.3.6",
+        "puppeteer-extra-plugin-stealth": "^2.11.2",
+        "winston": "^3.17.0"
+    },
+    "devDependencies": {
+        "eslint": "^8.57.1",
+        "prettier": "^3.4.2"
+    }
+}
