@@ -1,4 +1,4 @@
-import LockManager from "./LockManager.js";
+import LockManager from "../managers/LockManager.js";
 const lockManager = new LockManager();
 
 function lockRequest(req, res, next) {

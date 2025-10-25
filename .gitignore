@@ -133,5 +133,7 @@ dist
 .vscode
 
 # Other
-cache
-screenshots
+/cache
+/screenshots
+/config/users.json
+*.min.js

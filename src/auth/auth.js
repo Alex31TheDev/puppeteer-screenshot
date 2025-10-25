@@ -7,7 +7,7 @@ async function isPasswordValid(user, password) {
     return await bcrypt.compare(password, user.password);
 }
 
-function isTokenValid(user, decoded) {
+function isTokenValid(decoded, user) {
     return decoded.lastUpdated === user.lastUpdatedHash;
 }
 

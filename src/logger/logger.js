@@ -36,7 +36,9 @@ const enumerateErrorFormat = winston.format(info => {
 
 function printfTemplate(info) {
     let log = `[${info.timestamp}] - ${info.service} - ${info.level}: ${info.message}`;
+
     if (info.stack) log += `\n${info.stack}`;
+
     return log;
 }
 

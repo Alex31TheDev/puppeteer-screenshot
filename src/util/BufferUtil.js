@@ -14,6 +14,16 @@ const BufferUtil = Object.freeze({
         });
 
         return buffer;
+    },
+
+    decodeObjectFromBuffer: (data, keys) => {
+        const byteCount = keys.length * 2,
+            buffer = Buffer.from(data.subarray(-byteCount));
+
+        const values = Array.from({ length: keys.length }, (_, i) => buffer.readInt16BE(i * 2));
+
+        const obj = Object.fromEntries(keys.map((key, i) => [key, values[i]]));
+        return [obj, data.subarray(0, -byteCount)];
     }
 });
 

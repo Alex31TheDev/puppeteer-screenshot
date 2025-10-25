@@ -4,6 +4,8 @@ import { services } from "../services/services.js";
 
 import logger from "../logger/logger.js";
 
+import Util from "../util/Util.js";
+
 async function screenshot(req, res) {
     const { url, clip, scrollTo } = req.body;
 
@@ -18,7 +20,7 @@ async function screenshot(req, res) {
         logger.error(`Request error: ${error}:`);
         return res.status(400).json({ error });
     } else if (typeof clip === "object") {
-        if (![typeof clip.x, typeof clip.y, typeof clip.width, typeof clip.height].every(type => type === "number")) {
+        if (![clip.x, clip.y, clip.width, clip.height].every(pos => typeof pos === "number")) {
             const error = "Invalid clip provided. It must have x, y, width, and height";
             logger.error(`Request error: ${error}`);
             return res.status(400).json({ error });
@@ -31,10 +33,10 @@ async function screenshot(req, res) {
         return res.status(400).json({ error });
     }
 
-    let filePath;
+    let filePath = null;
 
     try {
-        filePath = await services.puppeteer.captureScreenshot(url, clip, scrollTo);
+        filePath = await services.puppeteer.captureScreenshot(url, { clip, scrollTo });
     } catch (err) {
         const error = "Failed to capture screenshot";
         logger.error(`Request error: ${error}:`, err);
@@ -49,24 +51,37 @@ async function screenshot(req, res) {
 
 async function messageScreenshot(req, res) {
     const { serverId, channelId, messageId } = req.body,
-        multipleMessages = Array.isArray(messageId);
+        { trim, sed } = req.body;
 
-    if (![typeof serverId, typeof channelId, typeof messageId].every(type => type === "string") && !multipleMessages) {
-        const error = "Server, channel and message ids are required";
+    const multipleMessages = Array.isArray(messageId);
+
+    if (multipleMessages) {
+        if (!messageId.every(Util.nonemptyString)) {
+            const error = "Invalid or empty message IDs provided";
+            logger.error(`Request error: ${error}`);
+            return res.status(400).json({ error });
+        }
+    } else {
+        if (!Util.nonemptyString(messageId)) {
+            const error = "Invalid or empty message ID provided";
+            logger.error(`Request error: ${error}`);
+            return res.status(400).json({ error });
+        }
+    }
+
+    if (![serverId, channelId].every(Util.nonemptyString)) {
+        const error = "Valid server and channel IDs are required";
         logger.error(`Request error: ${error}`);
         return res.status(400).json({ error });
     }
 
-    if (multipleMessages && !messageId.every(id => typeof id === "string")) {
-        const error = "Invalid message ID";
-        logger.error(`Request error: ${error}`);
-        return res.status(400).json({ error });
-    }
-
-    let filePath;
+    let filePath = null;
 
     try {
-        filePath = await services.puppeteer.captureMessageScreenshot(serverId, channelId, messageId);
+        filePath = await services.puppeteer.captureMessageScreenshot(serverId, channelId, messageId, {
+            trim,
+            sed
+        });
     } catch (err) {
         const error = "Failed to capture message screenshot";
         logger.error(`Request error: ${error}:`, err);

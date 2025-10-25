@@ -1,5 +1,5 @@
-import logger from "../logger/logger.js";
 import config from "../config/config.js";
+import logger from "../logger/logger.js";
 
 import { fetchUser } from "../auth/users.js";
 import { jwtVerifyAsync, isTokenValid } from "../auth/auth.js";
@@ -22,7 +22,7 @@ async function authenticateToken(req, res, next) {
         return res.status(401).json({ error });
     }
 
-    let decoded;
+    let decoded = null;
 
     try {
         decoded = await jwtVerifyAsync(token, config.jwtSecret);
