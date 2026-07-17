@@ -1,26 +1,20 @@
+import { fetchUser } from "../auth/users.js";
+import { jwtVerifyAsync, isTokenValid } from "../auth/auth.js";
 import config from "../config/config.js";
 import logger from "../logger/logger.js";
 
-import { fetchUser } from "../auth/users.js";
-import { jwtVerifyAsync, isTokenValid } from "../auth/auth.js";
+function sendAuthError(res, status, error) {
+    logger.error(`Auth error: ${error}`);
+    return res.status(status).json({ error });
+}
 
 async function authenticateToken(req, res, next) {
     const authHeader = req.headers["authorization"],
-        authSplit = authHeader?.split(" ");
+        authSplit = authHeader?.split(" "),
+        token = authSplit?.[1];
 
-    if (authSplit && authSplit[0] !== "Token") {
-        const error = "Invalid token";
-        logger.error(`Auth error: ${error}`);
-        return res.status(401).json({ error });
-    }
-
-    const token = authSplit?.[1];
-
-    if (typeof token !== "string" || token.length < 1) {
-        const error = "No token provided";
-        logger.error(`Auth error: ${error}`);
-        return res.status(401).json({ error });
-    }
+    if (authSplit && authSplit[0] !== "Token") return sendAuthError(res, 401, "Invalid token");
+    if (typeof token !== "string" || token.length < 1) return sendAuthError(res, 401, "No token provided");
 
     let decoded = null;
 
@@ -34,9 +28,7 @@ async function authenticateToken(req, res, next) {
     const user = fetchUser(decoded.username);
 
     if (!user || !isTokenValid(decoded, user)) {
-        const error = "Invalid credentials";
-        logger.error(`Auth error: ${error}`);
-        return res.status(401).json({ error });
+        return sendAuthError(res, 401, "Invalid credentials");
     }
 
     req.user = user;

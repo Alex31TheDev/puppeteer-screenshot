@@ -1,36 +1,36 @@
-import fsPromises from "fs/promises";
+import fsPromises from "node:fs/promises";
 
 import { services } from "../services/services.js";
-
 import logger from "../logger/logger.js";
-
 import Util from "../util/Util.js";
+
+function sendRequestError(res, status, error, err = null) {
+    if (err === null) {
+        logger.error(`Request error: ${error}`);
+        return res.status(status).json({ error });
+    }
+
+    logger.error(`Request error: ${error}:`, err);
+    return res.status(status).json({ error, details: err.message });
+}
 
 async function screenshot(req, res) {
     const { url, clip, scrollTo } = req.body;
 
     if (typeof url !== "string") {
-        const error = "URL is required";
-        logger.error(`Request error: ${error}`);
-        return res.status(400).json({ error });
+        return sendRequestError(res, 400, "URL is required");
     }
 
     if (!["undefined", "string", "object"].includes(typeof clip)) {
-        const error = "Invalid clip provided";
-        logger.error(`Request error: ${error}:`);
-        return res.status(400).json({ error });
+        return sendRequestError(res, 400, "Invalid clip provided");
     } else if (typeof clip === "object") {
         if (![clip.x, clip.y, clip.width, clip.height].every(pos => typeof pos === "number")) {
-            const error = "Invalid clip provided. It must have x, y, width, and height";
-            logger.error(`Request error: ${error}`);
-            return res.status(400).json({ error });
+            return sendRequestError(res, 400, "Invalid clip provided. It must have x, y, width, and height");
         }
     }
 
     if (!["undefined", "string"].includes(typeof scrollTo)) {
-        const error = "Invalid selector provided";
-        logger.error(`Request error: ${error}`);
-        return res.status(400).json({ error });
+        return sendRequestError(res, 400, "Invalid selector provided");
     }
 
     let filePath = null;
@@ -38,9 +38,7 @@ async function screenshot(req, res) {
     try {
         filePath = await services.puppeteer.captureScreenshot(url, { clip, scrollTo });
     } catch (err) {
-        const error = "Failed to capture screenshot";
-        logger.error(`Request error: ${error}:`, err);
-        return res.status(500).json({ error, details: err.message });
+        return sendRequestError(res, 500, "Failed to capture screenshot", err);
     }
 
     res.download(filePath, err => {
@@ -57,22 +55,16 @@ async function messageScreenshot(req, res) {
 
     if (multipleMessages) {
         if (!messageId.every(Util.nonemptyString)) {
-            const error = "Invalid or empty message IDs provided";
-            logger.error(`Request error: ${error}`);
-            return res.status(400).json({ error });
+            return sendRequestError(res, 400, "Invalid or empty message IDs provided");
         }
     } else {
         if (!Util.nonemptyString(messageId)) {
-            const error = "Invalid or empty message ID provided";
-            logger.error(`Request error: ${error}`);
-            return res.status(400).json({ error });
+            return sendRequestError(res, 400, "Invalid or empty message ID provided");
         }
     }
 
     if (![serverId, channelId].every(Util.nonemptyString)) {
-        const error = "Valid server and channel IDs are required";
-        logger.error(`Request error: ${error}`);
-        return res.status(400).json({ error });
+        return sendRequestError(res, 400, "Valid server and channel IDs are required");
     }
 
     let filePath = null;
@@ -83,9 +75,7 @@ async function messageScreenshot(req, res) {
             sed
         });
     } catch (err) {
-        const error = "Failed to capture message screenshot";
-        logger.error(`Request error: ${error}:`, err);
-        return res.status(500).json({ error, details: err.message });
+        return sendRequestError(res, 500, "Failed to capture message screenshot", err);
     }
 
     res.download(filePath, err => {

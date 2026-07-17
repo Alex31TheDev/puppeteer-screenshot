@@ -21,7 +21,7 @@ function wrapRequest(_, res, next) {
 
             return originalSend.call(this, {
                 error: true,
-                code: code,
+                code,
                 data: responseBody
             });
         }

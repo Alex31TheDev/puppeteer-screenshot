@@ -39,10 +39,10 @@ function setupRoutes() {
     }
 }
 
-async function startListening() {
+function startListening() {
     const port = config.port || defaultPort;
 
-    return new Promise((resolve, reject) => {
+    return new Promise(resolve => {
         app.listen(port, () => {
             logger.info(`Server running at: http://localhost:${port}`);
             resolve(port);

@@ -4,7 +4,7 @@ import logger from "../logger/logger.js";
 
 let services = {};
 
-async function initServices() {
+function initServices() {
     services.puppeteer = new PuppeteerService();
 }
 

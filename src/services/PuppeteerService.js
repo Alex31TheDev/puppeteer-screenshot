@@ -1,5 +1,5 @@
-import path from "path";
-import fs from "fs/promises";
+import fs from "node:fs/promises";
+import path from "node:path";
 
 import puppeteer from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
@@ -124,7 +124,7 @@ class PuppeteerService {
             const url = request.url();
 
             if (url.startsWith("file://")) {
-                console.log("Blocked file URL:", url);
+                logger.warn(`Blocked file URL: ${url}`);
                 request.abort();
             } else {
                 request.continue();
@@ -806,16 +806,14 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
     }
 
     _setDiscordCrashCheckInterval() {
-        const _this = this;
-
         this._discordCrashCheckTimer = setInterval(async () => {
-            if (!(await _this._discordCrashed())) return;
+            if (!(await this._discordCrashed())) return;
             logger.info("Discord page crashed.");
 
             try {
-                await _this._discordReloadPage();
+                await this._discordReloadPage();
             } catch (err) {
-                _this._clearDiscordCrashCheckInterval();
+                this._clearDiscordCrashCheckInterval();
             }
         }, this.discordCrashCheckInterval);
     }

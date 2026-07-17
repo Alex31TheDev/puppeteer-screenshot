@@ -1,5 +1,5 @@
-import fs from "fs";
-import crypto from "crypto";
+import crypto from "node:crypto";
+import fs from "node:fs";
 
 class HashUtil {
     static hashData(data, hashType = "sha1") {

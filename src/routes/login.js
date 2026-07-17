@@ -3,27 +3,26 @@ import { isPasswordValid, jwtCreateToken } from "../auth/auth.js";
 
 import logger from "../logger/logger.js";
 
+function sendLoginError(res, status, error) {
+    logger.error(`Login error: ${error}`);
+    return res.status(status).json({ error });
+}
+
 async function login(req, res) {
     const { username, password } = req.body;
 
     if (typeof username !== "string" || typeof password !== "string") {
-        const error = "Username and password are required";
-        logger.error(`Login error: ${error}`);
-        return res.status(400).json({ error });
+        return sendLoginError(res, 400, "Username and password are required");
     }
 
     const user = fetchUser(username);
 
     if (!user) {
-        const error = "Invalid credentials";
-        logger.error(`Login error: ${error}`);
-        return res.status(401).json({ error });
+        return sendLoginError(res, 401, "Invalid credentials");
     }
 
     if (!(await isPasswordValid(user, password))) {
-        const error = "Invalid credentials";
-        logger.error(`Login error: ${error}`);
-        return res.status(401).json({ error });
+        return sendLoginError(res, 401, "Invalid credentials");
     }
 
     const token = jwtCreateToken(user);

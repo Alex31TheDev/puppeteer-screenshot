@@ -1,0 +1,9 @@
+package.json
+package-lock.json
+cache/
+cache/**/*
+logs/
+logs/**/*
+screenshots/
+screenshots/**/*
+*.min.js
