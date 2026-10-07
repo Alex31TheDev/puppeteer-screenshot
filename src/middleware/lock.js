@@ -2,19 +2,19 @@ import LockManager from "../managers/LockManager.js";
 
 const lockManager = new LockManager();
 
-function lockRequest(req, res, next) {
-    const lockName = req.originalUrl;
+function createLock(lockName) {
+    return (_, res, next) => {
+        if (!lockManager.acquire(lockName)) {
+            res.status(503).json({ error: "The requested screenshot resource is busy. Please try again later." });
+            return;
+        }
 
-    if (lockManager.acquireLock(lockName)) {
-        res.on("finish", () => {
-            lockManager.releaseLock(lockName);
-        });
+        const release = () => lockManager.release(lockName);
+        res.once("finish", release);
+        res.once("close", release);
 
         next();
-    } else {
-        res.status(503);
-        res.end(`The "${lockName}" route is currently locked. Please try again later.`);
-    }
+    };
 }
 
-export default lockRequest;
+export default createLock;

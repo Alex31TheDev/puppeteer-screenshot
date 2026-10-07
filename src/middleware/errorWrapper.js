@@ -1,35 +1,17 @@
-function wrapRequest(_, res, next) {
-    const originalSend = res.send;
+import logger from "../logger/logger.js";
 
-    res.send = function (body) {
-        const code = res.statusCode || 200,
-            contentType = res.get("Content-Type") || "";
+function errorWrapper(err, _, res, next) {
+    if (res.headersSent) {
+        next(err);
+        return;
+    }
 
-        if (code < 200 || code >= 300) {
-            res.status(200);
-            let responseBody = body;
+    const status = Number.isInteger(err?.status) ? err.status : 500,
+        message = err?.expose ? err.message : "Internal server error";
 
-            if (typeof body === "string") {
-                if (contentType.includes("application/json")) {
-                    try {
-                        responseBody = JSON.parse(body);
-                    } catch (err) {}
-                } else {
-                    responseBody = { message: body };
-                }
-            }
+    if (status >= 500) logger.error("Unhandled request error", err);
 
-            return originalSend.call(this, {
-                error: true,
-                code,
-                data: responseBody
-            });
-        }
-
-        return originalSend.call(this, body);
-    };
-
-    next();
+    res.status(status).json({ error: message });
 }
 
-export default wrapRequest;
+export default errorWrapper;

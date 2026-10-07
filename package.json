@@ -6,6 +6,9 @@
     "scripts": {
         "format": "prettier --config .prettierrc --ignore-path .prettierignore --write **/*.{js,cjs,json}",
         "lint": "eslint . --config .eslintrc.cjs --ignore-path .gitignore --ext .js,.cjs",
+        "test": "node --test",
+        "password": "node scripts/password.js",
+        "secret": "node scripts/secret.js",
         "start": "node index.js",
         "minify-capture-tag": "terser \"./scripts/capture.js\" -o \"./scripts/capture.min.js\" -c passes=2 -m --mangle-props \"regex=/^#|_$/\" --toplevel "
     },

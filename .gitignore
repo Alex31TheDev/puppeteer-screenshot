@@ -136,4 +136,5 @@ dist
 /cache
 /screenshots
 /config/users.json
+/config/auth.json
 *.min.js

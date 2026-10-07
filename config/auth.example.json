@@ -1,0 +1,4 @@
+{
+    "jwtSecret": "<generate-with-npm-run-secret>",
+    "discordToken": null
+}

@@ -2,16 +2,15 @@ import users from "../config/users.js";
 
 import HashUtil from "../util/HashUtil.js";
 
-const defaultValidPeriod = "30d";
+async function fetchUser(username) {
+    const user = await users.find(username);
 
-function fetchUser(username) {
-    const user = users.find(u => u.username === username);
-    if (typeof user === "undefined") return false;
+    if (user === null) return null;
 
-    user.validFor ??= defaultValidPeriod;
-    user.lastUpdatedHash = HashUtil.hashData(user.lastUpdated, "md5");
-
-    return user;
+    return {
+        ...user,
+        lastUpdatedHash: HashUtil.hashData(user.lastUpdated)
+    };
 }
 
 export { fetchUser };

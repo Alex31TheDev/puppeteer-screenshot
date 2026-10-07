@@ -7,7 +7,7 @@ class LockManager {
         return this._locks.has(name);
     }
 
-    acquireLock(name) {
+    acquire(name) {
         if (this.isLocked(name)) {
             return false;
         }
@@ -16,7 +16,7 @@ class LockManager {
         return true;
     }
 
-    releaseLock(name) {
+    release(name) {
         this._locks.delete(name);
     }
 }

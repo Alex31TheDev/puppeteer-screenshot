@@ -3,16 +3,17 @@
     "screenshotDir": "./screenshots",
     "logLevel": "info",
     "port": 3000,
-    "headless": false,
+    "bodyLimit": "32kb",
+    "headless": true,
     "useNewNav": true,
     "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     "timezone": "Europe/London",
+    "navigationTimeout": 15000,
+    "allowPrivateNetwork": false,
     "window": {
         "fullscreen": false,
         "width": 2240,
         "height": 4000,
         "zoom": 1.2
-    },
-    "jwtSecret": "",
-    "discordToken": ""
+    }
 }

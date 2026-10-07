@@ -1,20 +1,23 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 
 import puppeteer from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
-puppeteer.use(StealthPlugin());
-
 import RE2 from "re2";
 
+import auth from "../config/auth.js";
 import config from "../config/config.js";
 import logger from "../logger/logger.js";
 
 import Util from "../util/Util.js";
-import BufferUtil from "../util/BufferUtil.js";
 import ImageUtil from "../util/ImageUtil.js";
 
 import ScreenshotError from "../errors/ScreenshotError.js";
+
+import NavigationPolicy from "./NavigationPolicy.js";
+
+puppeteer.use(StealthPlugin());
 
 class PuppeteerService {
     static defaultWindow = {
@@ -23,23 +26,17 @@ class PuppeteerService {
         zoom: 1
     };
 
-    static defaultDataDir = "./cache";
-    static defaultArgs = ["--disable-gpu", "--no-sandbox"];
-
     static discordLoginUrl = "https://discord.com/login";
-
-    static profilePictureClass = "c19a55";
 
     static rectSizeCap = 2 ** 15;
     static minMessageWidth = 500;
 
     static get profilePictureSelector() {
-        return `.avatar_${this.profilePictureClass}.clickable_${this.profilePictureId}`;
+        return '[class*="avatar_"]';
     }
 
     static getLaunchArgs(args) {
-        const launchArgs = this.defaultArgs.concat(args ?? []).map(arg => arg.trim());
-        return Array.from(new Set(launchArgs));
+        return [...new Set(args)];
     }
 
     constructor() {
@@ -61,41 +58,41 @@ class PuppeteerService {
             ...config.window
         };
 
-        this.userDataDir = path.resolve(config.userDataDir ?? PuppeteerService.defaultDataDir);
+        this.userDataDir = config.userDataDir;
         this.args = PuppeteerService.getLaunchArgs(config.args);
 
-        this.screenshotDir = path.resolve(process.cwd(), config.screenshotDir);
+        this.screenshotDir = config.screenshotDir;
+        this.navigationTimeout = config.navigationTimeout;
+        this.navigationPolicy = new NavigationPolicy(config.allowPrivateNetwork);
 
-        this.useDiscord = typeof config.discordToken === "string" && config.discordToken.length > 0;
-        this._discordToken = config.discordToken;
+        this.useDiscord = auth.discordToken !== null;
+        this._discordToken = auth.discordToken;
 
         if (this.useDiscord) {
-            this.discordLoginTimeout = 30000;
-            this.discordCrashCheckInterval = 5000;
-            this.discordMessageTimeout = 2000;
+            this.discordLoginTimeout = config.discordLoginTimeout;
+            this.discordCrashCheckInterval = config.discordCrashCheckInterval;
+            this.discordMessageTimeout = config.discordMessageTimeout;
         }
     }
 
     getScreenshotPath() {
-        const filename = `screenshot_${Date.now()}.png`;
+        const filename = `screenshot_${randomUUID()}.png`;
         return path.join(this.screenshotDir, filename);
     }
 
     async captureScreenshot(url, options = {}) {
         if (this._browser === null) {
             throw new ScreenshotError("Puppeteer browser is not initialized");
-        } else if (!/^https?:\/\//.test(url)) {
-            throw new ScreenshotError("Blocked navigation to non-web URL", url);
         }
 
-        const { clip, scrollTo } = options;
+        const { clip, scrollTo } = options,
+            target = await this.navigationPolicy.assertAllowed(url);
         logger.info(`Capturing page: ${url}`);
 
         const filePath = this.getScreenshotPath(),
             screenshotOpts = {
                 path: filePath,
-                captureBeyondViewport: false,
-                element: false
+                captureBeyondViewport: false
             };
 
         const useElementSelector = typeof scrollTo === "string";
@@ -108,7 +105,6 @@ class PuppeteerService {
                 throw new ScreenshotError("No element selector provided");
             }
 
-            screenshotOpts.element = true;
             logger.info("Capturing specific element based on scrollTo...");
         } else {
             screenshotOpts.fullPage = true;
@@ -116,55 +112,37 @@ class PuppeteerService {
         }
 
         const page = await this._browser.newPage();
-        await this._setPageDefaults(page);
-
-        await page.setRequestInterception(true);
-
-        page.on("request", request => {
-            const url = request.url();
-
-            if (url.startsWith("file://")) {
-                logger.warn(`Blocked file URL: ${url}`);
-                request.abort();
-            } else {
-                request.continue();
-            }
-        });
 
         try {
-            await page.goto(url, {
-                waitUntil: "load",
-                timeout: 2000
-            });
-
+            await this._setPageDefaults(page);
+            await this._setRequestPolicy(page);
+            await page.goto(target.toString(), { waitUntil: "domcontentloaded", timeout: this.navigationTimeout });
             await this._setZoom(page);
-        } catch (err) {
-            await page.close();
-            throw err;
-        }
 
-        let element;
+            let element = null;
 
-        if (useElementSelector) {
-            element = await page.$(scrollTo);
+            if (useElementSelector) {
+                element = await page.$(scrollTo);
 
-            if (!element) {
-                await page.close();
-                throw new ScreenshotError("Element not found");
+                if (element === null) {
+                    throw new ScreenshotError("Element not found", scrollTo, 404);
+                }
+
+                await this._instantScroll(page, scrollTo);
+                await Util.delay(250);
             }
 
-            await this._instantScroll(page, scrollTo);
-            await Util.delay(500);
-        }
-
-        try {
-            await (screenshotOpts.element ? element : page).screenshot(screenshotOpts);
+            await (clip === "element" ? element : page).screenshot(screenshotOpts);
+        } catch (err) {
+            await fs.unlink(filePath).catch(() => {});
+            throw err;
         } finally {
             await page.close();
         }
 
+        await this._assertScreenshotSize(filePath);
         logger.info(`Screenshot saved at ${filePath}`);
-        return filePath;
+        return { filePath, profilePicture: null };
     }
 
     async captureMessageScreenshot(serverId, channelId, messageIds, options = {}) {
@@ -185,7 +163,7 @@ class PuppeteerService {
         const filePath = this.getScreenshotPath(),
             screenshotOpts = {
                 type: "png",
-                path: trim ? filePath : undefined,
+                path: filePath,
                 captureBeyondViewport: false
             };
 
@@ -198,7 +176,7 @@ class PuppeteerService {
         if (message !== null) {
             logger.info(`Message with ID ${firstId} was found.`);
         } else {
-            throw new ScreenshotError(`Message with ID ${firstId} not found`, firstId);
+            throw new ScreenshotError(`Message with ID ${firstId} not found`, firstId, 404);
         }
 
         let messageData = null,
@@ -238,16 +216,15 @@ class PuppeteerService {
         if (trim) {
             let image = ImageUtil.decodeImgData(imageData);
             image = this._trimMessageImage(image);
-            ImageUtil.saveImgPNG(filePath, image);
+            await ImageUtil.saveImgPNG(filePath, image);
         }
 
         logger.info(`Screenshot saved at ${filePath}`);
 
-        const pfpRect = await this._getProfilePictureRect(message),
-            encoded = BufferUtil.encodeObjectToBuffer(pfpRect);
+        await this._assertScreenshotSize(filePath);
 
-        await fs.appendFile(filePath, encoded);
-        return filePath;
+        const profilePicture = await this._getProfilePictureRect(message);
+        return { filePath, profilePicture };
     }
 
     async init() {
@@ -255,26 +232,35 @@ class PuppeteerService {
             throw new ScreenshotError("Puppeteer browser is already initialized");
         }
 
-        await this._launchPuppeteer();
-        await this._initInnerSize();
-        logger.info("Puppeteer browser launched.");
+        try {
+            await this._launchPuppeteer();
+            await this._initInnerSize();
+            await this._makeScreenshotDir();
 
-        await this._makeScreenshotDir();
-
-        if (this.useDiscord) {
-            await this._discordCreateContext();
-            await this._discordLogin();
+            if (this.useDiscord) {
+                await this._discordCreateContext();
+                await this._discordLogin();
+            }
+        } catch (err) {
+            await this.close();
+            throw err;
         }
+
+        logger.info("Puppeteer browser launched.");
     }
 
     async close() {
+        this._clearDiscordCrashCheckInterval();
         if (this._browser === null) return;
 
-        await this._browser.close();
-        this._browser = null;
-
-        this._dcontext = null;
-        this._dpage = null;
+        try {
+            await this._browser.close();
+        } catch (err) {
+        } finally {
+            this._browser = null;
+            this._dcontext = null;
+            this._dpage = null;
+        }
 
         logger.info("Puppeteer browser closed.");
     }
@@ -285,27 +271,40 @@ class PuppeteerService {
         await fs.mkdir(this.screenshotDir, { recursive: true });
     }
 
+    async _assertScreenshotSize(filePath) {
+        const { size } = await fs.stat(filePath);
+
+        if (size <= config.maxScreenshotBytes) return;
+
+        await fs.unlink(filePath);
+        throw new ScreenshotError(`Screenshot exceeds the ${config.maxScreenshotBytes}-byte size limit`);
+    }
+
     async _launchPuppeteer() {
         const browserOpts = {
             headless: this.headless,
             userDataDir: this.userDataDir,
             defaultViewport: null,
-            args: this.args
+            args: this.args,
+            handleSIGINT: false,
+            handleSIGTERM: false,
+            handleSIGHUP: false
         };
 
         if (!browserOpts.headless) {
             browserOpts.args.push(
-                browserOpts.fullscreen
+                this.window.fullscreen
                     ? "--start-maximized"
                     : `--window-size=${this.window.width},${this.window.height}`
             );
         }
 
-        this.browserOpts = browserOpts;
         this._browser = await puppeteer.launch(browserOpts);
     }
 
     async _setPageDefaults(page) {
+        page.setDefaultNavigationTimeout(this.navigationTimeout);
+
         if (this.useCustomUserAgent) await page.setUserAgent(this.userAgent);
 
         if (this.headless) {
@@ -316,6 +315,20 @@ class PuppeteerService {
         }
 
         if (this.useCustomTimezone) await page.emulateTimezone(this.timezone);
+    }
+
+    async _setRequestPolicy(page) {
+        await page.setRequestInterception(true);
+
+        page.on("request", request => {
+            this.navigationPolicy
+                .isAllowed(request.url())
+                .then(allowed => (allowed ? request.continue() : request.abort("blockedbyclient")))
+                .catch(err => {
+                    logger.warn("Unable to apply navigation policy", err);
+                    return request.abort("blockedbyclient");
+                });
+        });
     }
 
     async _initInnerSize() {
@@ -330,18 +343,20 @@ class PuppeteerService {
             const page = await this._browser.newPage();
             await this._setPageDefaults(page);
 
-            innerSize = await page.evaluate(() => {
-                /* eslint-disable */
+            try {
+                innerSize = await page.evaluate(() => {
+                    /* eslint-disable */
 
-                return {
-                    innerWidth: window.innerWidth,
-                    innerHeight: window.innerHeight
-                };
+                    return {
+                        innerWidth: window.innerWidth,
+                        innerHeight: window.innerHeight
+                    };
 
-                /* eslint-enable */
-            });
-
-            await page.close();
+                    /* eslint-enable */
+                });
+            } finally {
+                await page.close();
+            }
         }
 
         this.window = {
@@ -562,7 +577,7 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
             if (newMessages) newMessages.style.display = "none";
 
             const messagesWrapper = document.querySelector('[class^="messagesWrapper"]'),
-                chatBox = messagesWrapper.nextElementSibling;
+                chatBox = messagesWrapper?.nextElementSibling;
 
             if (chatBox) chatBox.style.display = "none";
 
@@ -687,7 +702,7 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
             regex = new RE2(regexStr, flagsStr);
         } catch (err) {
             if (err instanceof SyntaxError) {
-                throw new ScreenshotError("Invalid regex or flags", { regexStr, flagsStr });
+                throw new ScreenshotError("Invalid regex or flags", { regexStr, flagsStr }, 400);
             }
 
             throw err;
@@ -697,14 +712,11 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
             newContent = null;
 
         if (!regex.test(originalContent)) {
-            throw new ScreenshotError("No matching text found", {
-                regex,
-                content: originalContent
-            });
+            throw new ScreenshotError("No matching text found", { regex, content: originalContent }, 422);
         } else newContent = originalContent.replace(regex, replace);
 
         if (newContent.length < 1) {
-            throw new ScreenshotError("Can't edit with empty content");
+            throw new ScreenshotError("Can't edit with empty content", undefined, 422);
         }
 
         await this._setMessageContent(data, newContent);
@@ -719,11 +731,10 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
             elements.push(await this._dpage.$(messageSelector));
         }
 
-        let boundingBoxes = await Promise.all(elements.map(element => element?.boundingBox()));
-        boundingBoxes = boundingBoxes.filter(Boolean);
+        const boundingBoxes = await Promise.all(elements.map(element => element?.boundingBox()));
 
-        if (boundingBoxes.length === 0) {
-            throw new ScreenshotError("No valid bounding boxes found for the messages");
+        if (boundingBoxes.some(box => box == null)) {
+            throw new ScreenshotError("One or more messages could not be located", undefined, 404);
         }
 
         const minX = Math.min(...boundingBoxes.map(box => box.x)),
@@ -733,13 +744,14 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
 
         const width = maxX - minX,
             height = maxY - minY,
-            windowHeight = this.window.height;
+            windowHeight = this.window.innerHeight ?? this.window.height;
 
-        if (maxY > windowHeight) {
-            throw new ScreenshotError("Messages too tall, they don't fit in the browser window", {
-                maxY,
-                windowHeight
-            });
+        if (minY < 0 || maxY > windowHeight) {
+            throw new ScreenshotError(
+                "Messages too tall, they don't fit in the browser window",
+                { maxY, windowHeight },
+                422
+            );
         }
 
         return {
@@ -752,22 +764,21 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
 
     _trimMessageImage(image) {
         const bg = ImageUtil.readImgPixel(image, 0, 0),
-            last = ImageUtil.readImgPixel(image, 0, image.height - 1);
-
-        if (!ImageUtil.pixelsMatch(bg, last)) image.height--;
+            last = ImageUtil.readImgPixel(image, 0, image.height - 1),
+            bottom = ImageUtil.pixelsMatch(bg, last) ? image.height - 1 : image.height - 2;
 
         const trim = ImageUtil.findTrim(image, {
-            treshold: 3,
+            threshold: 3,
             background: bg
         });
 
-        const newWidth = Math.max(trim.left + trim.right + 2, PuppeteerService.minMessageWidth);
+        const newWidth = Math.min(image.width, Math.max(trim.right + 1, PuppeteerService.minMessageWidth));
 
         return ImageUtil.clip(image, {
             left: 0,
             top: 0,
-            right: newWidth,
-            bottom: image.height - 1
+            right: newWidth - 1,
+            bottom
         });
     }
 
@@ -783,6 +794,8 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
         if (pfp) {
             const messageBox = await message.boundingBox(),
                 pfpBox = await pfp.boundingBox();
+
+            if (messageBox === null || pfpBox === null) return { x, y, width, height };
 
             x = pfpBox.x - messageBox.x;
             y = pfpBox.y - messageBox.y;
@@ -807,12 +820,12 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
 
     _setDiscordCrashCheckInterval() {
         this._discordCrashCheckTimer = setInterval(async () => {
-            if (!(await this._discordCrashed())) return;
-            logger.info("Discord page crashed.");
-
             try {
+                if (!(await this._discordCrashed())) return;
+                logger.info("Discord page crashed.");
                 await this._discordReloadPage();
             } catch (err) {
+                logger.error("Unable to recover Discord after a crash", err);
                 this._clearDiscordCrashCheckInterval();
             }
         }, this.discordCrashCheckInterval);

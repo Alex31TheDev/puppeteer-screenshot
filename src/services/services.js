@@ -2,7 +2,8 @@ import PuppeteerService from "./PuppeteerService.js";
 
 import logger from "../logger/logger.js";
 
-let services = {};
+let services = {},
+    signalsRegistered = false;
 
 function initServices() {
     services.puppeteer = new PuppeteerService();
@@ -13,28 +14,33 @@ async function setupServices() {
 
     initServices();
 
-    process.on("SIGINT", async () => {
-        await shutdownServices();
-        process.exit(0);
-    });
-
-    process.on("SIGTERM", async () => {
-        await shutdownServices();
-        process.exit(0);
-    });
+    registerSignals();
 
     for (const [name, service] of Object.entries(services)) {
         try {
             await service.init();
         } catch (err) {
-            logger.error(`Error occured while setting up "${name}" service:`, err);
+            logger.error(`Error occurred while setting up "${name}" service`, err);
 
-            await service.close();
+            await shutdownServices();
             return false;
         }
     }
 
     return true;
+}
+
+function registerSignals() {
+    if (signalsRegistered) return;
+
+    signalsRegistered = true;
+
+    for (const signal of ["SIGINT", "SIGTERM"]) {
+        process.once(signal, async () => {
+            await shutdownServices();
+            process.exit(0);
+        });
+    }
 }
 
 async function shutdownServices() {
@@ -44,7 +50,7 @@ async function shutdownServices() {
         try {
             await service.close();
         } catch (err) {
-            logger.error(`Error occured while shutting down "${name}" service:`, err);
+            logger.error(`Error occurred while shutting down "${name}" service`, err);
         }
     }
 

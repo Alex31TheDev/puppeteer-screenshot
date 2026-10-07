@@ -1,9 +1,13 @@
 import errorWrapper from "./errorWrapper.js";
 import auth from "./auth.js";
-import lock from "./lock.js";
+import asyncHandler from "./asyncHandler.js";
+import createLock from "./lock.js";
+import createRateLimit from "./rateLimit.js";
 
 export default {
     errorWrapper,
     auth,
-    lock
+    asyncHandler,
+    createLock,
+    createRateLimit
 };

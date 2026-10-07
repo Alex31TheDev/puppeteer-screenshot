@@ -1,19 +1,9 @@
 import bcrypt from "bcrypt";
 
-const args = process.argv.slice(2);
+const [username, password] = process.argv.slice(2);
 
-let password, username;
-
-if (args.length >= 2) {
-    password = args[1];
-    username = args[0];
-} else {
-    password = args[0];
-    username = "placeholder";
-}
-
-if (typeof password !== "string" || password.length < 1) {
-    console.error("ERROR: No password provided.");
+if (typeof username !== "string" || username.length === 0 || typeof password !== "string" || password.length === 0) {
+    console.error("ERROR: Username and password are required.");
     process.exit(1);
 }
 

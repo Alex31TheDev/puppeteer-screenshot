@@ -1,32 +1,8 @@
 import crypto from "node:crypto";
-import fs from "node:fs";
 
 class HashUtil {
-    static hashData(data, hashType = "sha1") {
-        const hash = crypto.createHash(hashType);
-        hash.setEncoding("hex");
-
-        hash.write(data);
-        hash.end();
-
-        return hash.read();
-    }
-
-    static hashFile(path, hashType = "sha1") {
-        return new Promise((resolve, reject) => {
-            const hash = crypto.createHash(hashType),
-                stream = fs.createReadStream(path);
-
-            hash.setEncoding("hex");
-
-            stream.once("error", err => reject(err));
-            stream.pipe(hash);
-
-            stream.once("end", () => {
-                hash.end();
-                resolve(hash.read());
-            });
-        });
+    static hashData(data, hashType = "sha256") {
+        return crypto.createHash(hashType).update(data).digest("hex");
     }
 }
 

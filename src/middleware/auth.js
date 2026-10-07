@@ -1,39 +1,36 @@
 import { fetchUser } from "../auth/users.js";
 import { jwtVerifyAsync, isTokenValid } from "../auth/auth.js";
-import config from "../config/config.js";
-import logger from "../logger/logger.js";
 
-function sendAuthError(res, status, error) {
-    logger.error(`Auth error: ${error}`);
-    return res.status(status).json({ error });
-}
+import auth from "../config/auth.js";
+
+import RequestError from "../errors/RequestError.js";
 
 async function authenticateToken(req, res, next) {
     const authHeader = req.headers["authorization"],
-        authSplit = authHeader?.split(" "),
-        token = authSplit?.[1];
+        [scheme, token] = authHeader?.split(/\s+/, 2) ?? [];
 
-    if (authSplit && authSplit[0] !== "Token") return sendAuthError(res, 401, "Invalid token");
-    if (typeof token !== "string" || token.length < 1) return sendAuthError(res, 401, "No token provided");
-
-    let decoded = null;
-
-    try {
-        decoded = await jwtVerifyAsync(token, config.jwtSecret);
-    } catch (err) {
-        logger.error("Verifying auth token failed:", err);
-        return res.status(403).json({ error: "Invalid token" });
+    if (scheme !== "Bearer" || typeof token !== "string" || token.length === 0) {
+        next(new RequestError("A Bearer token is required", 401));
+        return;
     }
 
-    const user = fetchUser(decoded.username);
+    let decoded;
+
+    try {
+        decoded = await jwtVerifyAsync(token, auth.jwtSecret);
+    } catch (err) {
+        next(new RequestError("Invalid token", 401));
+        return;
+    }
+
+    const user = await fetchUser(decoded.sub);
 
     if (!user || !isTokenValid(decoded, user)) {
-        return sendAuthError(res, 401, "Invalid credentials");
+        next(new RequestError("Invalid credentials", 401));
+        return;
     }
 
     req.user = user;
-    logger.info(`Authenticated as: ${user.username}`);
-
     next();
 }
 
