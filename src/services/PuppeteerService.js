@@ -485,7 +485,15 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
         await this._dpage.evaluate(() => {
             /* eslint-disable */
 
-            const wpRequire = webpackChunkdiscord_app.push([[Symbol()], {}, r => r]);
+            let wpRequire;
+
+            webpackChunkdiscord_app.push([
+                [Symbol()],
+                {},
+                r => {
+                    wpRequire = r;
+                }
+            ]);
             webpackChunkdiscord_app.pop();
 
             window.__s_wpRequire = id => {
@@ -500,16 +508,30 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
                 return _module?.[0] ?? null;
             };
 
+            window.__s_findExport = cb => {
+                let found = null;
+
+                window.__s_findModule(exports => {
+                    if (exports == null) return false;
+                    else if (cb(exports)) return ((found = exports), true);
+
+                    found = Object.values(exports).find(value => value != null && Boolean(cb(value))) ?? null;
+                    return found != null;
+                });
+
+                return found;
+            };
+
             /* eslint-enable */
         });
 
         await this._dpage.evaluate(() => {
             /* eslint-disable */
 
-            const dispatcher = __s_wpRequire(__s_findModule(_exports => _exports?.Wb?._handleDispatch))?.Wb;
+            const dispatcher = __s_findExport(v => typeof v?._handleDispatch === "function");
             if (dispatcher != null) window.__s_handleDispatch = dispatcher._handleDispatch.bind(dispatcher);
 
-            window.__s_channelCache = __s_wpRequire(89892)?.Z;
+            window.__s_channelCache = __s_findExport(v => v?._channelMessages != null);
 
             /* eslint-enable */
         });

@@ -33,7 +33,11 @@ function jwtVerifyAsync(token, secret) {
         jwt.verify(
             token,
             secret,
-            { algorithms: ["HS256"], audience: config.jwtAudience, issuer: config.jwtIssuer },
+            {
+                algorithms: ["HS256"],
+                audience: config.jwtAudience,
+                issuer: config.jwtIssuer
+            },
             (err, decoded) => {
                 if (err) reject(err);
                 else resolve(decoded);

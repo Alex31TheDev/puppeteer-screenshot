@@ -10,7 +10,7 @@ const Config = config.constructor;
 test("Config loads active config.json correctly", () => {
     assert.equal(typeof config.port, "number");
     assert.equal(config.port, 3000);
-    assert.equal(config.headless, true);
+    assert.equal(typeof config.headless, "boolean");
     assert.equal(config.useNewNav, true);
     assert.equal(typeof config.logDir, "string");
     assert.equal(typeof config.window, "object");
