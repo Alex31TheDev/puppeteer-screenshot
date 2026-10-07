@@ -10,7 +10,8 @@ class MessageScreenshotRequest {
         }
 
         const { serverId, channelId, messageId, trim = true, sed } = body,
-            messageIds = Array.isArray(messageId) ? messageId : [messageId];
+            rawMessageId = body.messageIds ?? messageId,
+            messageIds = Array.isArray(rawMessageId) ? rawMessageId : [rawMessageId];
 
         if (![serverId, channelId].every(Util.nonemptyString)) {
             throw new RequestError("Valid server and channel IDs are required");
@@ -30,7 +31,7 @@ class MessageScreenshotRequest {
 
         MessageScreenshotRequest._sed(sed);
 
-        return new MessageScreenshotRequest(serverId, channelId, messageIds, trim, sed);
+        return new MessageScreenshotRequest(serverId, channelId, messageIds, trim, sed ?? undefined);
     }
 
     constructor(serverId, channelId, messageIds, trim, sed) {
@@ -42,9 +43,9 @@ class MessageScreenshotRequest {
     }
 
     static _sed(sed) {
-        if (typeof sed === "undefined") return;
+        if (sed == null) return;
 
-        if (sed === null || Array.isArray(sed) || typeof sed !== "object") {
+        if (Array.isArray(sed) || typeof sed !== "object") {
             throw new RequestError("The sed option must be an object");
         }
 

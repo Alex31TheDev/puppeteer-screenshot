@@ -30,5 +30,8 @@
         "eslint-plugin-unused-imports": "^4.4.1",
         "prettier": "^3.8.4",
         "terser": "^5.44.0"
+    },
+    "overrides": {
+        "node-gyp": "^12.4.0"
     }
 }

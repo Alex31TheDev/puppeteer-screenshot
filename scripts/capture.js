@@ -1,8 +1,7 @@
 "use strict";
 
-const api = "http://37.27.51.247:7777",
-    token =
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6InVzZXIiLCJsYXN0VXBkYXRlZCI6ImZmOTIwMzY4YzYwZWZmYTZiYzIxMTIzYzBmMjMxNTU2IiwiaWF0IjoxNzYxMjQwMzgzLCJleHAiOjE3NjM4MzIzODN9.DDfnNGkwVU-XF1wAcf1tPKC25FKL-Iyv8nJBVvn5LFE";
+const api = "http://[IP_ADDRESS]",
+    token = "";
 
 const allowServerId = "927050775073534012",
     allowServerName = "Nomi";
@@ -21,22 +20,27 @@ function bytesToString(bytes) {
 }
 
 function screenshot(serverId, channelId, messageIds, sedOpts) {
+    const data = {
+        serverId,
+        channelId,
+        messageId: messageIds,
+        trim
+    };
+
+    if (sedOpts !== null) {
+        data.sed = sedOpts;
+    }
+
     const image = http.request({
         url: api + "/messageScreenshot",
         method: "post",
         responseType: "arraybuffer",
 
         headers: {
-            authorization: "Token " + token
+            authorization: "Bearer " + token
         },
 
-        data: {
-            serverId,
-            channelId,
-            messageId: messageIds,
-            trim,
-            sed: sedOpts
-        }
+        data
     }).data;
 
     return image instanceof ArrayBuffer ? new Uint8Array(image) : image;
@@ -44,15 +48,12 @@ function screenshot(serverId, channelId, messageIds, sedOpts) {
 
 function wrappedScreenshot(...args) {
     const data = screenshot(...args);
-    if (data[0] !== "{".charCodeAt(0)) return [data, null, null];
+    if (data[0] !== "{".charCodeAt(0)) return [data, null];
 
     const parsedData = JSON.parse(bytesToString(data));
-    if (!parsedData?.error) return [null, null, null];
+    if (!parsedData?.error) return [null, null];
 
-    const err = parsedData.data?.message ?? parsedData.data?.error ?? null,
-        details = parsedData.data?.details ?? null;
-
-    return [null, err, details];
+    return [null, parsedData.error];
 }
 
 function getMessageWindow(messageId, limit) {
@@ -117,9 +118,12 @@ function parseSedArgs() {
 
     const sedOpts = {
         regex: regexUnescaped,
-        replace: replaceUnescaped,
-        flags
+        replace: replaceUnescaped
     };
+
+    if (flags) {
+        sedOpts.flags = flags;
+    }
 
     return [sedOpts, null];
 }
@@ -148,17 +152,16 @@ function main() {
     const messageIds = getMessageWindow(messageId);
 
     {
-        const [imgData, err, details] = wrappedScreenshot(serverId, channelId, messageIds, sedOpts);
+        const [imgData, err] = wrappedScreenshot(serverId, channelId, messageIds, sedOpts);
 
         if (err !== null) {
-            if (details === "No matching text found") {
-                return `:no_entry_sign: ${details}.\n${usage2}`;
+            if (err === "No matching text found") {
+                return `:no_entry_sign: ${err}.\n${usage2}`;
             }
 
-            const errMsg = `${err}: ${details}`,
-                period = err.endsWith(".") ? "" : ".";
+            const period = err.endsWith(".") ? "" : ".";
 
-            return `:warning: ${errMsg}${period}`;
+            return `:warning: ${err}${period}`;
         }
 
         if (!imgData) return ":no_entry_sign: No image recieved.";
