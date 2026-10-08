@@ -63,7 +63,10 @@ class PuppeteerService {
 
         this.screenshotDir = config.screenshotDir;
         this.navigationTimeout = config.navigationTimeout;
-        this.navigationPolicy = new NavigationPolicy(config.allowPrivateNetwork);
+
+        this.navigationPolicy = new NavigationPolicy({
+            allowLocalhostRequests: config.allowLocalhostRequests
+        });
 
         this.useDiscord = auth.discordToken !== null;
         this._discordToken = auth.discordToken;
@@ -456,8 +459,6 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
             logger.error("Discord navigation failed with error:", err);
             throw err;
         }
-
-        await this._discordLoadingPatches();
     }
 
     async _discordPreloadPatches() {
@@ -478,20 +479,28 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
     }
 
     async _discordLoadingPatches() {
-        if (!(await this._discordWaitForLoading())) return;
+        if (!(await this._discordWaitForLoading())) {
+            throw new ScreenshotError("Timed out waiting for Discord Webpack to load");
+        }
 
         logger.debug("Applying Discord loading patches...");
 
         await this._dpage.evaluate(() => {
             /* eslint-disable */
 
-            let wpRequire;
+            let wpRequire,
+                maxCached = 0;
 
             webpackChunkdiscord_app.push([
                 [Symbol()],
                 {},
                 r => {
-                    wpRequire = r;
+                    const cacheSize = Object.keys(r?.c ?? {}).length;
+
+                    if (cacheSize > maxCached) {
+                        maxCached = cacheSize;
+                        wpRequire = r;
+                    }
                 }
             ]);
             webpackChunkdiscord_app.pop();
@@ -528,13 +537,31 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
         await this._dpage.evaluate(() => {
             /* eslint-disable */
 
-            const dispatcher = __s_findExport(v => typeof v?._handleDispatch === "function");
-            if (dispatcher != null) window.__s_handleDispatch = dispatcher._handleDispatch.bind(dispatcher);
+            window.__s_channelCache = __s_findExport(
+                v => typeof v?._channelMessages === "object" && typeof v?.getOrCreate === "function"
+            );
 
-            window.__s_channelCache = __s_findExport(v => v?._channelMessages != null);
+            const gatewayStore = __s_findExport(v => v?.constructor?.displayName === "GatewayConnectionStore"),
+                socket = gatewayStore?.getSocket?.();
+
+            if (typeof socket?._handleDispatch === "function") {
+                window.__s_handleDispatch = socket._handleDispatch.bind(socket);
+            }
 
             /* eslint-enable */
         });
+
+        const patchesLoaded = await this._dpage.evaluate(() => {
+            /* eslint-disable */
+
+            return typeof window.__s_handleDispatch === "function" && window.__s_channelCache != null;
+
+            /* eslint-enable */
+        });
+
+        if (!patchesLoaded) {
+            throw new ScreenshotError("Failed to load patches");
+        }
     }
 
     async _discordSetToken() {
@@ -558,6 +585,7 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
         logger.info("Reloading page to authenticate...");
         await this._discordReloadPage();
         await this._discordWaitForLogin();
+        await this._discordLoadingPatches();
 
         this._setDiscordCrashCheckInterval();
     }
@@ -679,8 +707,8 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
             (channelId, messageId) => {
                 /* eslint-disable */
 
-                const messageCache = __s_channelCache.get(channelId);
-                return messageCache.get(messageId) ?? null;
+                const messageCache = __s_channelCache.get(channelId) ?? __s_channelCache.getOrCreate(channelId);
+                return messageCache.get(messageId, true) ?? null;
 
                 /* eslint-enable */
             },
@@ -689,7 +717,7 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
         );
 
         if (data === null) {
-            throw new ScreenshotError("Cached message not found", { channelId, messageId });
+            throw new ScreenshotError("Cached message not found", { channelId, messageId }, 404);
         }
 
         return data;

@@ -38,7 +38,7 @@ class Config {
         discordLoginTimeout: { type: "integer", min: 1, default: 30000 },
         discordMessageTimeout: { type: "integer", min: 1, default: 5000 },
         discordCrashCheckInterval: { type: "integer", min: 1, default: 5000 },
-        allowPrivateNetwork: { type: "boolean", default: false },
+        allowLocalhostRequests: { type: "boolean", default: false },
         tokenTtl: { type: "string", default: "30d" },
         jwtIssuer: { type: "string", default: "puppeteer-screenshot" },
         jwtAudience: { type: "string", default: "puppeteer-screenshot" },
