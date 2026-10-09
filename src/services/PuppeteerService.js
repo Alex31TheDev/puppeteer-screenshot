@@ -8,6 +8,7 @@ import RE2 from "re2";
 
 import auth from "../config/auth.js";
 import config from "../config/config.js";
+import DefaultBrowserConfig from "../config/DefaultBrowserConfig.js";
 import logger from "../logger/logger.js";
 
 import Util from "../util/Util.js";
@@ -20,11 +21,8 @@ import NavigationPolicy from "./NavigationPolicy.js";
 puppeteer.use(StealthPlugin());
 
 class PuppeteerService {
-    static defaultWindow = {
-        width: 1920,
-        height: 1080,
-        zoom: 1
-    };
+    static defaultWindow = DefaultBrowserConfig.window;
+    static defaultArgs = DefaultBrowserConfig.args;
 
     static discordLoginUrl = "https://discord.com/login";
 
@@ -35,14 +33,59 @@ class PuppeteerService {
         return '[class*="avatar_"]';
     }
 
-    static getLaunchArgs(args) {
-        return [...new Set(args)];
+    static getLaunchArgs(args = []) {
+        return [...new Set([...DefaultBrowserConfig.args, ...args])];
+    }
+
+    static isCrashError(err) {
+        if (err == null || typeof err !== "object") return false;
+
+        const message = err.message ?? "";
+        if (err.name === "TargetCloseError") return true;
+
+        return (
+            message.includes("Target closed") ||
+            message.includes("detached Frame") ||
+            message.includes("Session closed") ||
+            message.includes("Execution context was destroyed") ||
+            message.includes("Target crashed") ||
+            message.includes("Page crashed")
+        );
+    }
+
+    static async isBrowserCrashed(browser) {
+        if (browser === null) return true;
+        if (!browser.isConnected()) return true;
+
+        try {
+            await browser.version();
+            return false;
+        } catch {
+            return true;
+        }
+    }
+
+    static async isPageCrashed(page) {
+        if (page === null || page.isClosed()) return true;
+
+        try {
+            const errorPage = await page.$('[class*="errorPage"]');
+            if (errorPage !== null) return true;
+
+            await page.evaluate(() => 1);
+            return false;
+        } catch {
+            return true;
+        }
     }
 
     constructor() {
         this._browser = null;
         this._dcontext = null;
         this._dpage = null;
+        this._isRecovering = false;
+
+        this.maxNavRetries = config.maxNavRetries ?? 3;
 
         this.headless = config.headless;
         this.useNewNav = config.useNewNav;
@@ -576,7 +619,7 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
         }, this._discordToken);
     }
 
-    async _discordLogin() {
+    async _discordInitPage() {
         await this._discordCreatePage();
 
         await this._discordNavigateToLogin();
@@ -586,8 +629,54 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
         await this._discordReloadPage();
         await this._discordWaitForLogin();
         await this._discordLoadingPatches();
+    }
 
+    async _discordLogin() {
+        await this._discordInitPage();
         this._setDiscordCrashCheckInterval();
+    }
+
+    async _recoverDiscordPage() {
+        if (this._isRecovering) return;
+        this._isRecovering = true;
+
+        try {
+            if (this._dpage !== null && !this._dpage.isClosed()) {
+                await this._dpage.close().catch(() => {});
+            }
+            this._dpage = null;
+
+            await this._discordInitPage();
+            logger.info("Discord page recovered successfully.");
+        } finally {
+            this._isRecovering = false;
+        }
+    }
+
+    async _recoverBrowser() {
+        if (this._isRecovering) return;
+        this._isRecovering = true;
+
+        try {
+            if (this._browser !== null) {
+                await this._browser.close().catch(() => {});
+            }
+            this._browser = null;
+            this._dcontext = null;
+            this._dpage = null;
+
+            await this._launchPuppeteer();
+            await this._initInnerSize();
+
+            if (this.useDiscord) {
+                await this._discordCreateContext();
+                await this._discordInitPage();
+            }
+
+            logger.info("Puppeteer browser recovered successfully.");
+        } finally {
+            this._isRecovering = false;
+        }
     }
 
     async _instantScroll(page, selector) {
@@ -680,15 +769,34 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
         const scrollToTop = options.scrollToTop ?? false;
 
         logger.info(`Navigating to server: ${serverId}, channel: ${channelId}, message: ${messageId}`);
-        await this._navigateToTarget(targetUrl);
 
-        try {
-            await this._dpage.waitForSelector(messageSelector, {
-                timeout: this.discordMessageTimeout
-            });
-        } catch (err) {
-            if (Util.isTimeoutError(err)) return null;
-            else throw err;
+        for (let attempt = 1; attempt <= this.maxNavRetries; attempt++) {
+            await this._navigateToTarget(targetUrl);
+
+            try {
+                await this._dpage.waitForSelector(messageSelector, {
+                    timeout: this.discordMessageTimeout
+                });
+                break;
+            } catch (err) {
+                if (PuppeteerService.isCrashError(err)) throw err;
+
+                if (Util.isTimeoutError(err)) {
+                    if (attempt < this.maxNavRetries) {
+                        logger.warn(`Navigation attempt ${attempt}/${this.maxNavRetries} timed out, retrying...`);
+                        await Util.delay(500);
+                        continue;
+                    }
+                    return null;
+                }
+
+                if (attempt < this.maxNavRetries) {
+                    logger.warn(`Navigation attempt ${attempt}/${this.maxNavRetries} failed, retrying...`, err);
+                    await Util.delay(500);
+                    continue;
+                }
+                throw err;
+            }
         }
 
         if (!this.useNewNav) await this._discordHideChatElements();
@@ -863,20 +971,24 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
         };
     }
 
-    async _discordCrashed() {
-        const errorPage = await this._dpage.$('[class*="errorPage"]');
-        return Boolean(errorPage);
-    }
-
     _setDiscordCrashCheckInterval() {
         this._discordCrashCheckTimer = setInterval(async () => {
+            if (this._isRecovering) return;
+
             try {
-                if (!(await this._discordCrashed())) return;
-                logger.info("Discord page crashed.");
-                await this._discordReloadPage();
+                if (await PuppeteerService.isBrowserCrashed(this._browser)) {
+                    logger.warn("Puppeteer browser crashed. Recovering browser...");
+                    await this._recoverBrowser();
+                    return;
+                }
+
+                if (await PuppeteerService.isPageCrashed(this._dpage)) {
+                    logger.warn("Discord page crashed. Recovering page...");
+                    await this._recoverDiscordPage();
+                    return;
+                }
             } catch (err) {
                 logger.error("Unable to recover Discord after a crash", err);
-                this._clearDiscordCrashCheckInterval();
             }
         }, this.discordCrashCheckInterval);
     }

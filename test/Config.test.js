@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import config from "../src/config/config.js";
+import DefaultBrowserConfig from "../src/config/DefaultBrowserConfig.js";
 
 import ConfigError from "../src/errors/ConfigError.js";
 
@@ -33,5 +34,5 @@ test("Config.schema validates and applies defaults on minimal object", () => {
     assert.equal(minimal.bodyLimit, "32kb");
     assert.equal(minimal.window.width, 1920);
     assert.equal(minimal.window.height, 1080);
-    assert.deepEqual(minimal.args, ["--disable-gpu"]);
+    assert.deepEqual(minimal.args, DefaultBrowserConfig.args);
 });

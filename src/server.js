@@ -37,14 +37,10 @@ function setupRoutes() {
     );
 
     app.use(middleware.asyncHandler(middleware.auth));
-    app.post("/screenshot", middleware.createLock("page-screenshot"), middleware.asyncHandler(routes.screenshot));
+    app.post("/screenshot", middleware.createQueue("page-screenshot", routes.screenshot));
 
     if (services.puppeteer.useDiscord) {
-        app.post(
-            "/messageScreenshot",
-            middleware.createLock("message-screenshot"),
-            middleware.asyncHandler(routes.messageScreenshot)
-        );
+        app.post("/messageScreenshot", middleware.createQueue("message-screenshot", routes.messageScreenshot));
     }
 
     app.use((_, res) => res.status(404).json({ error: "Route not found" }));

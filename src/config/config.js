@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import DefaultBrowserConfig from "./DefaultBrowserConfig.js";
 import Schema from "./Schema.js";
 
 import ConfigError from "../errors/ConfigError.js";
@@ -21,23 +22,26 @@ class Config {
         window: {
             type: "object",
             schema: {
-                fullscreen: { type: "boolean", default: false },
-                width: { type: "integer", min: 1, max: 16384, default: 1920 },
-                height: { type: "integer", min: 1, max: 16384, default: 1080 },
-                zoom: { type: "number", min: 0.1, max: 4, default: 1 }
+                fullscreen: { type: "boolean", default: DefaultBrowserConfig.window.fullscreen },
+                width: { type: "integer", min: 1, max: 16384, default: DefaultBrowserConfig.window.width },
+                height: { type: "integer", min: 1, max: 16384, default: DefaultBrowserConfig.window.height },
+                zoom: { type: "number", min: 0.1, max: 4, default: DefaultBrowserConfig.window.zoom }
             }
         },
         args: {
             type: "array",
             itemType: "string",
             unique: true,
-            default: ["--disable-gpu"]
+            default: DefaultBrowserConfig.args
         },
         navigationTimeout: { type: "integer", min: 1, default: 15000 },
         maxScreenshotBytes: { type: "integer", min: 1, max: 100 * 1024 * 1024, default: 20 * 1024 * 1024 },
         discordLoginTimeout: { type: "integer", min: 1, default: 30000 },
         discordMessageTimeout: { type: "integer", min: 1, default: 5000 },
         discordCrashCheckInterval: { type: "integer", min: 1, default: 5000 },
+        maxConcurrentRequests: { type: "integer", min: 1, default: 10 },
+        maxNavRetries: { type: "integer", min: 1, default: 3 },
+        maxCrashRetries: { type: "integer", min: 1, default: 3 },
         allowLocalhostRequests: { type: "boolean", default: false },
         tokenTtl: { type: "string", default: "30d" },
         jwtIssuer: { type: "string", default: "puppeteer-screenshot" },

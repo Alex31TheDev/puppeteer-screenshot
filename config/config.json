@@ -9,6 +9,9 @@
     "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     "timezone": "Europe/London",
     "navigationTimeout": 15000,
+    "maxConcurrentRequests": 10,
+    "maxNavRetries": 3,
+    "maxCrashRetries": 3,
     "allowLocalhostRequests": false,
     "window": {
         "fullscreen": false,
