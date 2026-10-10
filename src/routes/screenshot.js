@@ -30,11 +30,14 @@ async function screenshot(req, res) {
 }
 
 async function messageScreenshot(req, res) {
-    const data = MessageScreenshotRequest.from(req.body),
-        result = await services.puppeteer.captureMessageScreenshot(data.serverId, data.channelId, data.messageIds, {
-            trim: data.trim,
-            sed: data.sed
-        });
+    const data = MessageScreenshotRequest.from(req.body);
+
+    req.user?.accessPolicy?.assertAllowed(data.serverId, data.channelId);
+
+    const result = await services.puppeteer.captureMessageScreenshot(data.serverId, data.channelId, data.messageIds, {
+        trim: data.trim,
+        sed: data.sed
+    });
 
     sendDownload(res, result.filePath, result.profilePicture);
 }

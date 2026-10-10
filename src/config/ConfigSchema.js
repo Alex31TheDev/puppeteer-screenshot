@@ -4,7 +4,7 @@ import Util from "../util/Util.js";
 
 import ConfigError from "../errors/ConfigError.js";
 
-class Schema {
+class ConfigSchema {
     constructor(fields = {}) {
         this.fields = fields;
     }
@@ -45,7 +45,7 @@ class Schema {
     }
 
     static _path(val, name, def = {}) {
-        const str = Schema._string(val, name, def);
+        const str = ConfigSchema._string(val, name, def);
 
         if (str === null) {
             return null;
@@ -108,7 +108,7 @@ class Schema {
     _validateField(val, name, def) {
         if (typeof val === "undefined") {
             if (typeof def.default !== "undefined") {
-                val = Schema._getDefault(def.default);
+                val = ConfigSchema._getDefault(def.default);
             } else if (def.type === "object" && typeof def.schema === "object") {
                 val = {};
             } else if (def.optional) {
@@ -120,17 +120,17 @@ class Schema {
 
         switch (def.type) {
             case "string":
-                return Schema._string(val, name, def);
+                return ConfigSchema._string(val, name, def);
             case "path":
-                return Schema._path(val, name, def);
+                return ConfigSchema._path(val, name, def);
             case "boolean":
-                return Schema._boolean(val, name);
+                return ConfigSchema._boolean(val, name);
             case "integer":
-                return Schema._integer(val, name, def);
+                return ConfigSchema._integer(val, name, def);
             case "number":
-                return Schema._number(val, name, def);
+                return ConfigSchema._number(val, name, def);
             case "array":
-                return Schema._array(val, name, def);
+                return ConfigSchema._array(val, name, def);
             case "object":
                 if (typeof def.schema === "object") {
                     return this._validateObject(val, def.schema, name);
@@ -168,4 +168,4 @@ class Schema {
     }
 }
 
-export default Schema;
+export default ConfigSchema;

@@ -2,12 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 
 import DefaultBrowserConfig from "./DefaultBrowserConfig.js";
-import Schema from "./Schema.js";
+import ConfigSchema from "./ConfigSchema.js";
 
 import ConfigError from "../errors/ConfigError.js";
 
 class Config {
-    static schema = new Schema({
+    static schema = new ConfigSchema({
         logDir: { type: "path", default: "./logs" },
         logLevel: { type: "string", default: "info" },
         port: { type: "integer", min: 1, max: 65535, default: 3000 },

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import Schema from "./Schema.js";
+import ConfigSchema from "./ConfigSchema.js";
 
 import Util from "../util/Util.js";
 
@@ -15,7 +15,7 @@ const authEnvKeys = Object.freeze({
 class Auth {
     static envKeys = authEnvKeys;
 
-    static schema = new Schema({
+    static schema = new ConfigSchema({
         jwtSecret: { type: "string", default: "", allowEmpty: true },
         discordToken: { type: "string", optional: true }
     });
