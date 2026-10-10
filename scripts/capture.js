@@ -3,6 +3,8 @@
 const api = "http://[IP_ADDRESS]",
     token = "";
 
+const sedTags = ["g:better-better-sed", "g:bbsed", "g:bbs"];
+
 const allowServerId = "927050775073534012",
     allowServerName = "Nomi";
 

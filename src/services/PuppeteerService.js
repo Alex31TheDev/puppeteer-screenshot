@@ -248,6 +248,7 @@ class PuppeteerService {
                 await this._instantScroll(this._dpage, messageSelectors[0]);
 
                 await this._waitForMediaLoaded(message);
+                await this._hideExcept(this._dpage, messageSelectors);
 
                 screenshotOpts.clip = await this._getMessagesRect(message, channelId, messageIds);
                 imageData = await this._dpage.screenshot(screenshotOpts);
@@ -256,6 +257,7 @@ class PuppeteerService {
                 await Util.delay(this.retryDelay);
 
                 await this._waitForMediaLoaded(message);
+                await this._hideExcept(this._dpage, messageSelectors);
 
                 imageData = await message.screenshot(screenshotOpts);
             }
@@ -731,27 +733,56 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
         await element.scrollIntoView();
     }
 
-    async _hideExcept(page, selectors) {
+    async _hideExcept(page, selectors, maxRetries = 3) {
         if (!Array.isArray(selectors)) selectors = [selectors];
 
-        await page.evaluate(selectors => {
-            /* eslint-disable */
+        const barSelectors = [
+            '[class*="newMessagesBar"]',
+            '[class*="jumpToPresentBar"]',
+            '[class*="barBase"]',
+            '[class*="messagesErrorBar"]',
+            '[class*="newMessagesPill"]'
+        ];
 
-            document.querySelectorAll("body *").forEach(element => {
-                const isTarget = selectors.some(sel => element.matches(sel)),
-                    isChildOfTarget = selectors.some(sel => element.closest(sel)),
-                    isAncestorOfTarget = selectors.some(sel => element.querySelector(sel));
+        for (let i = 0; i < maxRetries; i++) {
+            const hasVisibleBars = await page.evaluate(
+                (selectors, barSelectors) => {
+                    /* eslint-disable */
 
-                if (!isTarget && !isChildOfTarget && !isAncestorOfTarget) element.style.display = "none";
-            });
+                    document.querySelectorAll("body *").forEach(el => {
+                        const isTarget = selectors.some(sel => el.matches(sel)),
+                            isChildOfTarget = selectors.some(sel => el.closest(sel)),
+                            isAncestorOfTarget = selectors.some(sel => el.querySelector(sel));
 
-            document.querySelectorAll("[class*='scrollerContent'], [class*='scrollerInner']").forEach(element => {
-                element.style.justifyContent = "flex-start";
-                element.style.minHeight = "0";
-            });
+                        if (!isTarget && !isChildOfTarget && !isAncestorOfTarget) {
+                            el.style.setProperty("display", "none", "important");
+                        }
+                    });
 
-            /* eslint-enable */
-        }, selectors);
+                    const bars = document.querySelectorAll(barSelectors.join(", "));
+                    let visibleFound = false;
+
+                    for (const bar of bars) {
+                        const isTarget = selectors.some(sel => bar.matches(sel) || bar.closest(sel));
+                        if (isTarget) continue;
+
+                        const style = window.getComputedStyle(bar);
+                        if (style.display !== "none" && style.visibility !== "hidden") {
+                            bar.style.setProperty("display", "none", "important");
+                            visibleFound = true;
+                        }
+                    }
+
+                    return visibleFound;
+                    /* eslint-enable */
+                },
+                selectors,
+                barSelectors
+            );
+
+            if (!hasVisibleBars) break;
+            if (i < maxRetries - 1) await Util.delay(50);
+        }
     }
 
     async _discordHideFlashes() {

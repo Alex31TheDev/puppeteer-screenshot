@@ -4,17 +4,22 @@ HTTP service for capturing web pages and Discord messages.
 
 ## Setup
 
-1. Copy `config/users.example.json` to `config/users.json` and generate a user:
+1. Install dependencies:
+    ```bash
+    sudo apt-get update && sudo apt-get install -y ca-certificates fonts-liberation fonts-roboto fonts-noto-color-emoji libasound2t64 libatk-bridge2.0-0 libatk1.0-0 libcairo2 libcups2 libdbus-1-3 libdrm2 libgbm1 libglib2.0-0 libgtk-3-0 libnspr4 libnss3 libpango-1.0-0 libx11-6 libx11-xcb1 libxcb1 libxcomposite1 libxcursor1 libxdamage1 libxext6 libxfixes3 libxi6 libxrandr2 libxrender1 libxss1 libxtst6 xdg-utils
+    npm install
+    ```
+2. Copy `config/users.example.json` to `config/users.json` and generate a user:
     ```bash
     npm run password -- <username> <password>
     ```
-2. Copy `config/auth.example.json` to `config/auth.json` and generate a JWT secret:
+3. Copy `config/auth.example.json` to `config/auth.json` and generate a JWT secret:
     ```bash
     npm run secret
     ```
     Set `jwtSecret` in `config/auth.json` (at least 32 characters).
-3. (Optional) To enable `/messageScreenshot`, set `discordToken` in `config/auth.json` to a Discord user token.
-4. Start the server:
+4. (Optional) To enable `/messageScreenshot`, set `discordToken` in `config/auth.json` to a Discord user token.
+5. Start the server:
     ```bash
     npm start
     ```
