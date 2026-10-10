@@ -71,7 +71,7 @@ async function startServer() {
     await users.validate();
 
     if (!(await setupServices())) {
-        return;
+        process.exit(1);
     }
 
     logger.info("Setting up server...");

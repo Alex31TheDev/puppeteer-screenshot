@@ -94,8 +94,10 @@ function getMessageWindow(messageId, limit) {
     return result;
 }
 
-const tagName = msg.content.split(" ")[1],
-    sedTag = ["better-better-sed", "bbsed", "bbs"].includes(tagName);
+const sedTags = ["better-better-sed", "bbsed", "bbs"];
+
+const realTag = util.fetchTag(tag.name),
+    isSedCall = realTag.hops.some(hop => sedTags.includes(hop));
 
 const sedRegex = /^\/((?:\\\/|[^/])+)\/((?:\\\/|[^/])*)(?:\/([gimsuy]*))?$/s,
     usage1 = "Please provide a replacement string, e.g., `/find/replace`",
@@ -136,13 +138,13 @@ function main() {
     if (serverId !== allowServerId) {
         return `:information_source: This tag only works in **${allowServerName}**.`;
     } else if (typeof messageId === "undefined") {
-        const action = sedTag ? "sed replace" : "screenshot";
+        const action = isSedCall ? "sed replace" : "screenshot";
         return `:information_source: You need to **reply** to a message in order to **${action}** it.`;
     }
 
     let sedOpts = null;
 
-    if (sedTag) {
+    if (isSedCall) {
         let err;
         [sedOpts, err] = parseSedArgs();
 

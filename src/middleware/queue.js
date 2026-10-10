@@ -6,7 +6,7 @@ import config from "../config/config.js";
 const queueManager = new QueueManager({
     maxConcurrentRequests: config.maxConcurrentRequests,
     maxRetries: config.maxCrashRetries,
-    retryDelay: config.discordCrashCheckInterval
+    retryDelay: config.retryDelay
 });
 
 function createQueue(queueName, handler, options = {}) {

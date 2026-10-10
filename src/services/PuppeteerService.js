@@ -86,10 +86,11 @@ class PuppeteerService {
         this._dpage = null;
         this._isRecovering = false;
 
-        this.maxNavRetries = config.maxNavRetries ?? 3;
+        this.maxNavRetries = config.maxNavRetries;
+        this.retryTimeout = config.retryTimeout;
+        this.retryDelay = config.retryDelay;
 
         this.headless = config.headless;
-        this.useNewNav = config.useNewNav;
 
         this.useCustomUserAgent = typeof config.userAgent === "string" && config.userAgent.length > 0;
         this.userAgent = config.userAgent;
@@ -216,7 +217,7 @@ class PuppeteerService {
 
         logger.info(`Locating message with ID: ${firstId}...`);
 
-        const message = await this._navigateToMessage(serverId, channelId, firstId, {
+        let message = await this._navigateToMessage(serverId, channelId, firstId, {
             scrollToTop: multipleMessages
         });
 
@@ -230,24 +231,32 @@ class PuppeteerService {
             imageData = null,
             originalContent = null;
 
-        if (this.useNewNav) {
-            const messageSelectors = messageIds.map(id => Util.getMessageSelector(channelId, id));
-            await this._hideExcept(this._dpage, messageSelectors);
-        }
+        const messageSelectors = messageIds.map(id => Util.getMessageSelector(channelId, id));
+        await this._hideExcept(this._dpage, messageSelectors);
 
         if (replaceContent) {
             messageData = await this._fetchCachedMessage(channelId, firstId);
             ({ originalContent } = await this._replaceMessageContent(messageData, sedOpts));
+            await Util.delay(this.retryDelay);
+            message = await this._dpage.$(messageSelectors[0]);
         }
 
         try {
             await this._setZoom(this._dpage);
-            await this._waitForMediaLoaded(message);
 
             if (multipleMessages) {
+                await this._instantScroll(this._dpage, messageSelectors[0]);
+
+                await this._waitForMediaLoaded(message);
+
                 screenshotOpts.clip = await this._getMessagesRect(message, channelId, messageIds);
                 imageData = await this._dpage.screenshot(screenshotOpts);
             } else {
+                await this._ensureInViewport(message);
+                await Util.delay(this.retryDelay);
+
+                await this._waitForMediaLoaded(message);
+
                 imageData = await message.screenshot(screenshotOpts);
             }
         } finally {
@@ -450,18 +459,43 @@ class PuppeteerService {
     async _discordWaitForLogin() {
         logger.info("Waiting for homepage...");
 
-        try {
-            await this._dpage.waitForSelector('[data-list-item-id="guildsnav___home"]', {
+        const homePromise = this._dpage.waitForSelector('[data-list-item-id="guildsnav___home"]', {
+            timeout: this.discordLoginTimeout
+        });
+
+        const auth401Promise = this._dpage
+            .waitForResponse(res => res.url().includes("/api/v9/users/@me") && res.status() === 401, {
                 timeout: this.discordLoginTimeout
+            })
+            .then(() => {
+                throw new ScreenshotError("Invalid Discord token provided", undefined, 401);
             });
 
+        const loginFormPromise = this._dpage
+            .waitForFunction(
+                () => {
+                    /* eslint-disable */
+                    return (
+                        window.__s_localStorage?.getItem("token") === null &&
+                        document.querySelector('form, [class*="loginForm"], [class*="qrCode"]') !== null
+                    );
+                    /* eslint-enable */
+                },
+                { timeout: this.discordLoginTimeout }
+            )
+            .then(() => {
+                throw new ScreenshotError("Invalid Discord token provided", undefined, 401);
+            });
+
+        try {
+            await Promise.race([homePromise, auth401Promise, loginFormPromise]);
             logger.info("Logged into Discord successfully.");
         } catch (err) {
             if (Util.isTimeoutError(err)) {
                 logger.error(`Discord login failed. (${Util.msToSec(this.discordLoginTimeout)}s timeout exceeded)
 The provided Discord token is likely invalid. Try updating it then restarting.`);
             } else {
-                logger.error("Discord login failed with error:", err);
+                logger.error("Discord login failed:", err);
             }
 
             throw err;
@@ -681,11 +715,20 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
         await page.evaluate(selector => {
             /* eslint-disable */
 
+            document.querySelectorAll("[class*='scrollerContent'], [class*='scrollerInner']").forEach(container => {
+                container.style.justifyContent = "flex-start";
+                container.style.minHeight = "0";
+            });
+
             const element = document.querySelector(selector);
-            element.scrollIntoView({ behavior: "instant", block: "start" });
+            element?.scrollIntoView({ behavior: "instant", block: "start" });
 
             /* eslint-enable */
         }, selector);
+    }
+
+    async _ensureInViewport(element) {
+        await element.scrollIntoView();
     }
 
     async _hideExcept(page, selectors) {
@@ -702,24 +745,13 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
                 if (!isTarget && !isChildOfTarget && !isAncestorOfTarget) element.style.display = "none";
             });
 
+            document.querySelectorAll("[class*='scrollerContent'], [class*='scrollerInner']").forEach(element => {
+                element.style.justifyContent = "flex-start";
+                element.style.minHeight = "0";
+            });
+
             /* eslint-enable */
         }, selectors);
-    }
-
-    async _discordHideChatElements() {
-        await this._dpage.evaluate(() => {
-            /* eslint-disable */
-
-            const newMessages = document.querySelector('[class^="newMessagesBar"]');
-            if (newMessages) newMessages.style.display = "none";
-
-            const messagesWrapper = document.querySelector('[class^="messagesWrapper"]'),
-                chatBox = messagesWrapper?.nextElementSibling;
-
-            if (chatBox) chatBox.style.display = "none";
-
-            /* eslint-enable */
-        });
     }
 
     async _discordHideFlashes() {
@@ -758,7 +790,7 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
         }, targetUrl);
     }
 
-    async _waitForMessageRendered(channelId, messageId, timeout = 250) {
+    async _waitForMessageRendered(channelId, messageId, timeout = this.retryTimeout) {
         const messageSelector = Util.getMessageSelector(channelId, messageId);
 
         await this._dpage.waitForFunction(
@@ -778,7 +810,9 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
                         content !== null && (content.childNodes.length > 0 || content.textContent.trim().length > 0),
                     hasAccessories = accessories !== null && accessories.children.length > 0;
 
-                if (!hasContent && !hasAccessories) return false;
+                const isSystemMessage = content === null && accessories === null && article.children.length > 0;
+
+                if (!hasContent && !hasAccessories && !isSystemMessage) return false;
 
                 const hasReply = el.querySelector('[class*="hasReply"]') !== null;
                 if (hasReply) {
@@ -816,12 +850,26 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
                         return false;
                     }
 
-                    const imgs = el.querySelectorAll('[id^="message-accessories-"] img, [class*="embed"] img');
+                    const imgs = el.querySelectorAll('[id^="message-accessories-"] img, [class*="embed"] img'),
+                        videos = el.querySelectorAll('[id^="message-accessories-"] video, [class*="embed"] video');
+
+                    const wrappers = el.querySelectorAll(
+                        '[id^="message-accessories-"] [class*="imageWrapper"], [class*="embed"] [class*="imageWrapper"]'
+                    );
+
+                    if (wrappers.length > 0 && imgs.length === 0 && videos.length === 0) {
+                        return false;
+                    }
 
                     for (let i = 0; i < imgs.length; i++) {
                         const img = imgs[i];
                         if (img.src && !img.src.startsWith("data:") && (!img.complete || img.naturalWidth === 0))
                             return false;
+                    }
+
+                    for (let i = 0; i < videos.length; i++) {
+                        const video = videos[i];
+                        if (video.src && video.readyState < 2) return false;
                     }
 
                     return true;
@@ -846,13 +894,14 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
             await this._navigateToTarget(targetUrl);
 
             try {
-                await this._waitForMessageRendered(channelId, messageId, 250);
+                await this._waitForMessageRendered(channelId, messageId, this.retryTimeout);
                 break;
             } catch (err) {
                 if (PuppeteerService.isCrashError(err)) throw err;
 
                 if (attempt < this.maxNavRetries) {
                     logger.warn(`Navigation attempt ${attempt}/${this.maxNavRetries} failed, retrying...`, err);
+                    await Util.delay(this.retryDelay);
                     continue;
                 }
 
@@ -861,7 +910,6 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
             }
         }
 
-        if (!this.useNewNav) await this._discordHideChatElements();
         await this._discordHideFlashes();
 
         if (scrollToTop) {
@@ -909,31 +957,40 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
         );
     }
 
-    async _waitForMessageContent(channelId, messageId, expectedContent, timeout = 3000) {
+    async _waitForMessageContent(channelId, messageId, expectedContent, replacedText, timeout = 3000) {
         const messageSelector = Util.getMessageSelector(channelId, messageId);
 
-        await this._dpage.waitForFunction(
-            (sel, messageId, expected) => {
-                /* eslint-disable */
+        await this._dpage
+            .waitForFunction(
+                (sel, messageId, expected, replaced) => {
+                    /* eslint-disable */
 
-                const el = document.querySelector(sel);
-                if (el === null) return false;
+                    const el = document.querySelector(sel);
+                    if (el === null) return false;
 
-                const content = el.querySelector(`[id="message-content-${messageId}"]`);
-                if (content === null) return false;
+                    const content = el.querySelector(`[id="message-content-${messageId}"]`);
+                    if (content === null) return false;
 
-                const text = content.textContent ?? "",
-                    inner = content.innerText ?? "";
+                    const text = content.textContent ?? "",
+                        inner = content.innerText ?? "";
 
-                return text.trim() === expected.trim() || inner.trim() === expected.trim() || text.includes(expected);
+                    if (typeof replaced === "string" && replaced.length > 0) {
+                        if (text.includes(replaced) || inner.includes(replaced)) return true;
+                    }
 
-                /* eslint-enable */
-            },
-            { timeout },
-            messageSelector,
-            messageId,
-            expectedContent
-        );
+                    return (
+                        text.trim() === expected.trim() || inner.trim() === expected.trim() || text.includes(expected)
+                    );
+
+                    /* eslint-enable */
+                },
+                { timeout },
+                messageSelector,
+                messageId,
+                expectedContent,
+                replacedText
+            )
+            .catch(() => {});
     }
 
     async _replaceMessageContent(data, options = {}) {
@@ -966,7 +1023,7 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
         }
 
         await this._setMessageContent(data, newContent);
-        await this._waitForMessageContent(data.channel_id, data.id, newContent);
+        await this._waitForMessageContent(data.channel_id, data.id, newContent, replace);
 
         return { originalContent, newContent };
     }
@@ -975,7 +1032,7 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
         const elements = [element];
 
         for (const id of messageIds.slice(1)) {
-            await this._waitForMessageRendered(channelId, id, 250);
+            await this._waitForMessageRendered(channelId, id, this.retryTimeout);
             const messageSelector = Util.getMessageSelector(channelId, id);
             elements.push(await this._dpage.$(messageSelector));
         }

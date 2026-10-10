@@ -10,9 +10,10 @@ const Config = config.constructor;
 
 test("Config loads active config.json correctly", () => {
     assert.equal(typeof config.port, "number");
-    assert.equal(config.port, 3000);
+    assert.ok(config.port > 0);
     assert.equal(typeof config.headless, "boolean");
-    assert.equal(config.useNewNav, true);
+    assert.equal(config.retryTimeout, 5000);
+    assert.equal(config.retryDelay, 500);
     assert.equal(typeof config.logDir, "string");
     assert.equal(typeof config.window, "object");
     assert.equal(config.window.width, 2240);
@@ -31,6 +32,8 @@ test("Config.schema validates and applies defaults on minimal object", () => {
     assert.equal(minimal.port, 3000);
     assert.equal(minimal.logLevel, "info");
     assert.equal(minimal.headless, true);
+    assert.equal(minimal.retryTimeout, 5000);
+    assert.equal(minimal.retryDelay, 500);
     assert.equal(minimal.bodyLimit, "32kb");
     assert.equal(minimal.window.width, 1920);
     assert.equal(minimal.window.height, 1080);

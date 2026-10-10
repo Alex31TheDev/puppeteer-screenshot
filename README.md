@@ -126,10 +126,11 @@ Settings in `config/config.json`:
 - `screenshotDir` (string, default: `"./screenshots"`): Temporary directory where screenshots are written.
 - `userDataDir` (string, default: `"./cache"`): Puppeteer browser user data / cache directory.
 - `headless` (boolean, default: `true`): Run Chrome in headless mode.
-- `useNewNav` (boolean, default: `true`): Hide outer Discord UI elements on navigation.
 - `navigationTimeout` (number, default: `15000`): Navigation timeout in ms for standard web pages.
 - `discordLoginTimeout` (number, default: `30000`): Timeout in ms waiting for Discord login on startup.
 - `discordMessageTimeout` (number, default: `5000`): Timeout in ms waiting for Discord message selector.
+- `retryTimeout` (number, default: `5000`): Timeout in ms for navigation retry attempts.
+- `retryDelay` (number, default: `500`): Delay in ms between failed navigation retries and requests.
 - `allowLocalhostRequests` (boolean, default: `false`): Allow requests to loopback and RFC 1918 addresses.
 - `window.width` (number, default: `1920`): Browser viewport width.
 - `window.height` (number, default: `1080`): Browser viewport height.
