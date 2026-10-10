@@ -6,17 +6,18 @@ import puppeteer from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import RE2 from "re2";
 
+import NavigationPolicy from "./NavigationPolicy.js";
+
 import auth from "../config/auth.js";
 import config from "../config/config.js";
 import DefaultBrowserConfig from "../config/DefaultBrowserConfig.js";
+
 import logger from "../logger/logger.js";
 
 import Util from "../util/Util.js";
 import ImageUtil from "../util/ImageUtil.js";
 
 import ScreenshotError from "../errors/ScreenshotError.js";
-
-import NavigationPolicy from "./NavigationPolicy.js";
 
 puppeteer.use(StealthPlugin());
 
@@ -478,7 +479,7 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
                     /* eslint-enable */
                 },
                 {
-                    timeout: 5000,
+                    timeout: this.discordLoginTimeout,
                     polling: 100
                 }
             );
@@ -774,11 +775,19 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
                     accessories = el.querySelector(`[id="message-accessories-${messageId}"]`);
 
                 const hasContent =
-                        content !== null && (content.childNodes.length > 0 || content.textContent.length > 0),
-                    hasAccessories = accessories !== null && accessories.children.length > 0,
-                    hasArticleChildren = article.children.length > 0;
+                        content !== null && (content.childNodes.length > 0 || content.textContent.trim().length > 0),
+                    hasAccessories = accessories !== null && accessories.children.length > 0;
 
-                if (!hasContent && !hasAccessories && !hasArticleChildren) return false;
+                if (!hasContent && !hasAccessories) return false;
+
+                const hasReply = el.querySelector('[class*="hasReply"]') !== null;
+                if (hasReply) {
+                    const replyContext = el.querySelector(`[id="message-reply-context-${messageId}"]`);
+                    if (replyContext === null) return false;
+
+                    const replyLoading = replyContext.querySelector('[class*="Loading"], [class*="Skeleton"]') !== null;
+                    if (replyLoading) return false;
+                }
 
                 const rect = el.getBoundingClientRect();
                 return rect.width > 0 && rect.height > 0;
@@ -798,6 +807,12 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
                     /* eslint-disable */
 
                     if (el.querySelector('[class*="imageWrapperBackground"]') !== null) {
+                        return false;
+                    }
+
+                    if (
+                        el.querySelector('[class*="imagePlaceholder_"]:not([class*="imagePlaceholderHidden"])') !== null
+                    ) {
                         return false;
                     }
 
@@ -894,6 +909,33 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
         );
     }
 
+    async _waitForMessageContent(channelId, messageId, expectedContent, timeout = 3000) {
+        const messageSelector = Util.getMessageSelector(channelId, messageId);
+
+        await this._dpage.waitForFunction(
+            (sel, messageId, expected) => {
+                /* eslint-disable */
+
+                const el = document.querySelector(sel);
+                if (el === null) return false;
+
+                const content = el.querySelector(`[id="message-content-${messageId}"]`);
+                if (content === null) return false;
+
+                const text = content.textContent ?? "",
+                    inner = content.innerText ?? "";
+
+                return text.trim() === expected.trim() || inner.trim() === expected.trim() || text.includes(expected);
+
+                /* eslint-enable */
+            },
+            { timeout },
+            messageSelector,
+            messageId,
+            expectedContent
+        );
+    }
+
     async _replaceMessageContent(data, options = {}) {
         if (data === null) return { originalContent: null, newContent: null };
 
@@ -924,6 +966,8 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
         }
 
         await this._setMessageContent(data, newContent);
+        await this._waitForMessageContent(data.channel_id, data.id, newContent);
+
         return { originalContent, newContent };
     }
 

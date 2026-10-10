@@ -9,6 +9,19 @@ function initServices() {
     services.puppeteer = new PuppeteerService();
 }
 
+function registerSignals() {
+    if (signalsRegistered) return;
+
+    signalsRegistered = true;
+
+    for (const signal of ["SIGINT", "SIGTERM"]) {
+        process.once(signal, async () => {
+            await shutdownServices();
+            process.exit(0);
+        });
+    }
+}
+
 async function setupServices() {
     logger.info("Setting up services...");
 
@@ -28,19 +41,6 @@ async function setupServices() {
     }
 
     return true;
-}
-
-function registerSignals() {
-    if (signalsRegistered) return;
-
-    signalsRegistered = true;
-
-    for (const signal of ["SIGINT", "SIGTERM"]) {
-        process.once(signal, async () => {
-            await shutdownServices();
-            process.exit(0);
-        });
-    }
 }
 
 async function shutdownServices() {

@@ -2,8 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import QueueManager from "../src/managers/QueueManager.js";
-import ScreenshotError from "../src/errors/ScreenshotError.js";
+
 import Util from "../src/util/Util.js";
+
+import ScreenshotError from "../src/errors/ScreenshotError.js";
 
 test("QueueManager enqueues and executes tasks sequentially", async () => {
     const queue = new QueueManager({ maxConcurrentRequests: 5 }),

@@ -1,6 +1,7 @@
-import config from "../config/config.js";
-import QueueManager from "../managers/QueueManager.js";
 import PuppeteerService from "../services/PuppeteerService.js";
+import QueueManager from "../managers/QueueManager.js";
+
+import config from "../config/config.js";
 
 const queueManager = new QueueManager({
     maxConcurrentRequests: config.maxConcurrentRequests,

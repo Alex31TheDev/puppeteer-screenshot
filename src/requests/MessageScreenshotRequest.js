@@ -1,5 +1,6 @@
-import RequestError from "../errors/RequestError.js";
 import Util from "../util/Util.js";
+
+import RequestError from "../errors/RequestError.js";
 
 class MessageScreenshotRequest {
     static maxMessageCount = 25;

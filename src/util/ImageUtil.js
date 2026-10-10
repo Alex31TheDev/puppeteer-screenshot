@@ -1,8 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+
 import { PNG } from "pngjs";
 
 import logger from "../logger/logger.js";
+
 import ImageError from "../errors/ImageError.js";
 
 class ImageUtil {

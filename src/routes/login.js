@@ -21,9 +21,7 @@ async function login(req, res) {
 
     if (!user) {
         throw new RequestError("Invalid credentials", 401);
-    }
-
-    if (!(await isPasswordValid(user, password))) {
+    } else if (!(await isPasswordValid(user, password))) {
         throw new RequestError("Invalid credentials", 401);
     }
 

@@ -6,11 +6,14 @@ import { setupServices, services } from "./services/services.js";
 import auth from "./config/auth.js";
 import config from "./config/config.js";
 import users from "./config/users.js";
-import ConfigError from "./errors/ConfigError.js";
+
 import logger from "./logger/logger.js";
 
 import middleware from "./middleware/middleware.js";
+
 import routes from "./routes/routes.js";
+
+import ConfigError from "./errors/ConfigError.js";
 
 const morganFormat = ":remote-addr :method :url :status :res[content-length] - :response-time ms";
 
