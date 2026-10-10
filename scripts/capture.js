@@ -94,13 +94,14 @@ function getMessageWindow(messageId, limit) {
     return result;
 }
 
-const sedTags = ["better-better-sed", "bbsed", "bbs"];
+const tagName = msg.content.split(" ")[1],
+    realTag = util.fetchTag(tagName);
 
-const realTag = util.fetchTag(tag.name),
-    isSedCall = realTag.hops.some(hop => sedTags.includes(hop));
+const isSedCall = realTag.hops.some(hop => sedTags.includes(hop));
 
-const sedRegex = /^\/((?:\\\/|[^/])+)\/((?:\\\/|[^/])*)(?:\/([gimsuy]*))?$/s,
-    usage1 = "Please provide a replacement string, e.g., `/find/replace`",
+const sedRegex = /^\/((?:\\\/|[^/])+)\/((?:\\\/|[^/])*)(?:\/([gimsuy]*))?$/s;
+
+const usage1 = "Please provide a replacement string, e.g., `/find/replace`",
     usage2 = "Please use `/find/replace` or `/find/replace/flags`";
 
 function parseSedArgs() {

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import NavigationPolicy from "../src/services/NavigationPolicy.js";
+import NavigationPolicy from "../src/policies/NavigationPolicy.js";
 
 test("NavigationPolicy rejects non-web and private-network targets", async () => {
     const policy = new NavigationPolicy();

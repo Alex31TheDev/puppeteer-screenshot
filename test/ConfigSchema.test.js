@@ -2,12 +2,12 @@ import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import Schema from "../src/config/Schema.js";
+import ConfigSchema from "../src/config/ConfigSchema.js";
 
 import ConfigError from "../src/errors/ConfigError.js";
 
-test("Schema applies defaults and validates primitive fields", () => {
-    const schema = new Schema({
+test("ConfigSchema applies defaults and validates primitive fields", () => {
+    const schema = new ConfigSchema({
         port: { type: "integer", min: 1, max: 65535, default: 3000 },
         logLevel: { type: "string", default: "info" },
         enabled: { type: "boolean", default: true },
@@ -23,8 +23,8 @@ test("Schema applies defaults and validates primitive fields", () => {
     assert.ok(Object.isFrozen(result));
 });
 
-test("Schema resolves paths and handles optional fields", () => {
-    const schema = new Schema({
+test("ConfigSchema resolves paths and handles optional fields", () => {
+    const schema = new ConfigSchema({
         logDir: { type: "path", default: "./logs" },
         userAgent: { type: "string", optional: true }
     });
@@ -43,8 +43,8 @@ test("Schema resolves paths and handles optional fields", () => {
     assert.equal(withValues.userAgent, "MyAgent/1.0");
 });
 
-test("Schema handles nested object schemas and applies sub-defaults", () => {
-    const schema = new Schema({
+test("ConfigSchema handles nested object schemas and applies sub-defaults", () => {
+    const schema = new ConfigSchema({
         window: {
             type: "object",
             schema: {
@@ -65,8 +65,8 @@ test("Schema handles nested object schemas and applies sub-defaults", () => {
     assert.deepEqual(partiallyCustom.window, { width: 1280, height: 1080, fullscreen: false });
 });
 
-test("Schema validates arrays and deduplicates when unique is true", () => {
-    const schema = new Schema({
+test("ConfigSchema validates arrays and deduplicates when unique is true", () => {
+    const schema = new ConfigSchema({
         args: {
             type: "array",
             itemType: "string",
@@ -85,8 +85,8 @@ test("Schema validates arrays and deduplicates when unique is true", () => {
     assert.deepEqual(customized.args, ["--no-sandbox", "--disable-gpu"]);
 });
 
-test("Schema throws ConfigError on invalid input types", () => {
-    const schema = new Schema({
+test("ConfigSchema throws ConfigError on invalid input types", () => {
+    const schema = new ConfigSchema({
         port: { type: "integer", min: 1, max: 65535, default: 3000 },
         host: { type: "string", default: "localhost" }
     });

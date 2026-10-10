@@ -1,5 +1,7 @@
 import fs from "node:fs/promises";
 
+import AccessPolicy from "../policies/AccessPolicy.js";
+
 import config from "./config.js";
 
 import ConfigError from "../errors/ConfigError.js";
@@ -60,8 +62,21 @@ class UserStore {
                 );
             }
 
+            const accessPolicy = new AccessPolicy({
+                allowedServers: user.allowedServers,
+                allowedChannels: user.allowedChannels
+            });
+
             names.add(username);
-            return Object.freeze({ username, password, lastUpdated });
+
+            return Object.freeze({
+                username,
+                password,
+                lastUpdated,
+                accessPolicy,
+                allowedServers: accessPolicy.allowedServers,
+                allowedChannels: accessPolicy.allowedChannels
+            });
         });
     }
 }

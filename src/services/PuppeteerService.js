@@ -6,7 +6,7 @@ import puppeteer from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import RE2 from "re2";
 
-import NavigationPolicy from "./NavigationPolicy.js";
+import NavigationPolicy from "../policies/NavigationPolicy.js";
 
 import auth from "../config/auth.js";
 import config from "../config/config.js";
