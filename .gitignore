@@ -133,7 +133,7 @@ dist
 .vscode
 
 # Other
-/cache
+/cache*
 /screenshots
 /config/users.json
 /config/auth.json
