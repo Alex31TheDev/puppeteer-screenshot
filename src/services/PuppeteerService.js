@@ -237,15 +237,13 @@ class PuppeteerService {
         if (replaceContent) {
             messageData = await this._fetchCachedMessage(channelId, firstId);
             ({ originalContent } = await this._replaceMessageContent(messageData, sedOpts));
-            await Util.delay(200);
         }
 
         try {
             await this._setZoom(this._dpage);
+            await this._waitForMediaLoaded(message);
 
             if (multipleMessages) {
-                await Util.delay(300);
-
                 screenshotOpts.clip = await this._getMessagesRect(message, channelId, messageIds);
                 imageData = await this._dpage.screenshot(screenshotOpts);
             } else {
@@ -253,7 +251,6 @@ class PuppeteerService {
             }
         } finally {
             if (replaceContent) {
-                await Util.delay(200);
                 await this._setMessageContent(messageData, originalContent);
                 messageData = originalContent = null;
             }
@@ -751,15 +748,75 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
         await this._dpage.evaluate(targetUrl => {
             /* eslint-disable */
 
-            if (window.location.pathname !== targetUrl) {
-                window.history.pushState(null, "", targetUrl);
-                window.history.pushState(null, "", null);
+            window.history.pushState(null, "", targetUrl);
+            window.history.pushState(null, "", null);
 
-                window.history.go(-1);
-            }
+            window.history.go(-1);
 
             /* eslint-enable */
         }, targetUrl);
+    }
+
+    async _waitForMessageRendered(channelId, messageId, timeout = 250) {
+        const messageSelector = Util.getMessageSelector(channelId, messageId);
+
+        await this._dpage.waitForFunction(
+            (sel, messageId) => {
+                /* eslint-disable */
+
+                const el = document.querySelector(sel);
+                if (el === null) return false;
+
+                const article = el.querySelector('[role="article"]');
+                if (article === null) return false;
+
+                const content = el.querySelector(`[id="message-content-${messageId}"]`),
+                    accessories = el.querySelector(`[id="message-accessories-${messageId}"]`);
+
+                const hasContent =
+                        content !== null && (content.childNodes.length > 0 || content.textContent.length > 0),
+                    hasAccessories = accessories !== null && accessories.children.length > 0,
+                    hasArticleChildren = article.children.length > 0;
+
+                if (!hasContent && !hasAccessories && !hasArticleChildren) return false;
+
+                const rect = el.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0;
+
+                /* eslint-enable */
+            },
+            { timeout },
+            messageSelector,
+            messageId
+        );
+    }
+
+    async _waitForMediaLoaded(element, timeout = 3000) {
+        await this._dpage
+            .waitForFunction(
+                el => {
+                    /* eslint-disable */
+
+                    if (el.querySelector('[class*="imageWrapperBackground"]') !== null) {
+                        return false;
+                    }
+
+                    const imgs = el.querySelectorAll('[id^="message-accessories-"] img, [class*="embed"] img');
+
+                    for (let i = 0; i < imgs.length; i++) {
+                        const img = imgs[i];
+                        if (img.src && !img.src.startsWith("data:") && (!img.complete || img.naturalWidth === 0))
+                            return false;
+                    }
+
+                    return true;
+
+                    /* eslint-enable */
+                },
+                { timeout },
+                element
+            )
+            .catch(() => {});
     }
 
     async _navigateToMessage(serverId, channelId, messageId, options = {}) {
@@ -774,27 +831,17 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
             await this._navigateToTarget(targetUrl);
 
             try {
-                await this._dpage.waitForSelector(messageSelector, {
-                    timeout: this.discordMessageTimeout
-                });
+                await this._waitForMessageRendered(channelId, messageId, 250);
                 break;
             } catch (err) {
                 if (PuppeteerService.isCrashError(err)) throw err;
 
-                if (Util.isTimeoutError(err)) {
-                    if (attempt < this.maxNavRetries) {
-                        logger.warn(`Navigation attempt ${attempt}/${this.maxNavRetries} timed out, retrying...`);
-                        await Util.delay(500);
-                        continue;
-                    }
-                    return null;
-                }
-
                 if (attempt < this.maxNavRetries) {
                     logger.warn(`Navigation attempt ${attempt}/${this.maxNavRetries} failed, retrying...`, err);
-                    await Util.delay(500);
                     continue;
                 }
+
+                if (Util.isTimeoutError(err)) return null;
                 throw err;
             }
         }
@@ -806,7 +853,6 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
             await this._instantScroll(this._dpage, messageSelector);
         }
 
-        await Util.delay(this.useNewNav ? 500 : 1500);
         return await this._dpage.$(messageSelector);
     }
 
@@ -885,6 +931,7 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
         const elements = [element];
 
         for (const id of messageIds.slice(1)) {
+            await this._waitForMessageRendered(channelId, id, 250);
             const messageSelector = Util.getMessageSelector(channelId, id);
             elements.push(await this._dpage.$(messageSelector));
         }
