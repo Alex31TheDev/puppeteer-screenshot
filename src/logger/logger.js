@@ -3,12 +3,16 @@ import path from "node:path";
 
 import winston from "winston";
 
+import DailyRotateFileTransport from "./DailyRotateFileTransport.js";
+
 import config from "../config/config.js";
 
 const logDir = path.resolve(process.cwd(), config.logDir);
 fs.mkdirSync(logDir, { recursive: true });
 
 const level = config.logLevel;
+
+const logFileName = "puppeteer-screenshot.log";
 
 const enumerateErrorFormat = winston.format(info => {
     if (info.message instanceof Error) {
@@ -42,9 +46,6 @@ function printfTemplate(info) {
     return log;
 }
 
-const currentDate = new Date().toISOString().split("T")[0],
-    logFileName = `${level}_${currentDate}.log`;
-
 const logger = winston.createLogger({
     level,
     defaultMeta: {
@@ -64,8 +65,9 @@ const logger = winston.createLogger({
             )
         }),
 
-        new winston.transports.File({
-            filename: path.join(logDir, logFileName),
+        new DailyRotateFileTransport({
+            logFile: path.join(logDir, logFileName),
+            level,
             format: winston.format.combine(winston.format.timestamp(), winston.format.json())
         })
     ]
