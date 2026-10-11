@@ -228,41 +228,38 @@ class PuppeteerService {
         }
 
         let messageData = null,
-            imageData = null,
             originalContent = null;
 
-        const messageSelectors = messageIds.map(id => Util.getMessageSelector(channelId, id));
-        await this._hideExcept(this._dpage, messageSelectors);
+        let imageData = null;
 
-        if (replaceContent) {
-            messageData = await this._fetchCachedMessage(channelId, firstId);
-            ({ originalContent } = await this._replaceMessageContent(messageData, sedOpts));
-            await Util.delay(this.retryDelay);
-            message = await this._dpage.$(messageSelectors[0]);
-        }
+        const messageSelectors = messageIds.map(id => Util.getMessageSelector(channelId, id));
 
         try {
             await this._setZoom(this._dpage);
 
             if (multipleMessages) {
                 await this._instantScroll(this._dpage, messageSelectors[0]);
+            } else {
+                await this._ensureInViewport(message);
+            }
 
-                await this._waitForMediaLoaded(message);
-                await this._hideExcept(this._dpage, messageSelectors);
+            await this._waitForMediaLoaded(message);
+            await this._hideExcept(this._dpage, messageSelectors);
 
+            if (replaceContent) {
+                messageData = await this._fetchCachedMessage(channelId, firstId);
+                ({ originalContent } = await this._replaceMessageContent(messageData, sedOpts));
+                message = await this._dpage.$(messageSelectors[0]);
+            }
+
+            if (multipleMessages) {
                 screenshotOpts.clip = await this._getMessagesRect(message, channelId, messageIds);
                 imageData = await this._dpage.screenshot(screenshotOpts);
             } else {
-                await this._ensureInViewport(message);
-                await Util.delay(this.retryDelay);
-
-                await this._waitForMediaLoaded(message);
-                await this._hideExcept(this._dpage, messageSelectors);
-
                 imageData = await message.screenshot(screenshotOpts);
             }
         } finally {
-            if (replaceContent) {
+            if (replaceContent && messageData !== null) {
                 await this._setMessageContent(messageData, originalContent);
                 messageData = originalContent = null;
             }
@@ -730,10 +727,23 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
     }
 
     async _ensureInViewport(element) {
-        await element.scrollIntoView();
+        await this._dpage.evaluate(el => {
+            /* eslint-disable */
+
+            if (!el) return;
+
+            const rect = el.getBoundingClientRect();
+            const inViewport = rect.top >= 0 && rect.bottom <= window.innerHeight;
+
+            if (!inViewport) {
+                el.scrollIntoView({ behavior: "instant", block: "center" });
+            }
+
+            /* eslint-enable */
+        }, element);
     }
 
-    async _hideExcept(page, selectors, maxRetries = 3) {
+    async _hideExcept(page, selectors) {
         if (!Array.isArray(selectors)) selectors = [selectors];
 
         const barSelectors = [
@@ -744,45 +754,33 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
             '[class*="newMessagesPill"]'
         ];
 
-        for (let i = 0; i < maxRetries; i++) {
-            const hasVisibleBars = await page.evaluate(
-                (selectors, barSelectors) => {
-                    /* eslint-disable */
+        await page.evaluate(
+            (selectors, barSelectors) => {
+                /* eslint-disable */
 
-                    document.querySelectorAll("body *").forEach(el => {
-                        const isTarget = selectors.some(sel => el.matches(sel)),
-                            isChildOfTarget = selectors.some(sel => el.closest(sel)),
-                            isAncestorOfTarget = selectors.some(sel => el.querySelector(sel));
+                document.querySelectorAll("body *").forEach(el => {
+                    const isTarget = selectors.some(sel => el.matches(sel)),
+                        isChildOfTarget = selectors.some(sel => el.closest(sel)),
+                        isAncestorOfTarget = selectors.some(sel => el.querySelector(sel));
 
-                        if (!isTarget && !isChildOfTarget && !isAncestorOfTarget) {
-                            el.style.setProperty("display", "none", "important");
-                        }
-                    });
-
-                    const bars = document.querySelectorAll(barSelectors.join(", "));
-                    let visibleFound = false;
-
-                    for (const bar of bars) {
-                        const isTarget = selectors.some(sel => bar.matches(sel) || bar.closest(sel));
-                        if (isTarget) continue;
-
-                        const style = window.getComputedStyle(bar);
-                        if (style.display !== "none" && style.visibility !== "hidden") {
-                            bar.style.setProperty("display", "none", "important");
-                            visibleFound = true;
-                        }
+                    if (!isTarget && !isChildOfTarget && !isAncestorOfTarget) {
+                        el.style.setProperty("display", "none", "important");
                     }
+                });
 
-                    return visibleFound;
-                    /* eslint-enable */
-                },
-                selectors,
-                barSelectors
-            );
+                document.querySelectorAll(barSelectors.join(", ")).forEach(bar => {
+                    const isTarget = selectors.some(sel => bar.matches(sel) || bar.closest(sel));
 
-            if (!hasVisibleBars) break;
-            if (i < maxRetries - 1) await Util.delay(50);
-        }
+                    if (!isTarget) {
+                        bar.style.setProperty("display", "none", "important");
+                    }
+                });
+
+                /* eslint-enable */
+            },
+            selectors,
+            barSelectors
+        );
     }
 
     async _discordHideFlashes() {
@@ -974,16 +972,33 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
     async _setMessageContent(data, newContent) {
         if (data === null || !Util.nonemptyString(newContent)) return;
 
+        const channelId = data.channel_id ?? data.channelId,
+            messageId = data.id ?? data.messageId;
+
         await this._dpage.evaluate(
-            (data, newContent) => {
+            (channelId, messageId, newContent) => {
                 /* eslint-disable */
 
-                data.content = newContent;
-                __s_handleDispatch(data, "MESSAGE_UPDATE", {});
+                const cache =
+                    window.__s_channelCache?.get(channelId) ?? window.__s_channelCache?.getOrCreate(channelId);
+                const record = cache?.get(messageId, true);
+
+                if (record) {
+                    record.content = newContent;
+                }
+
+                if (typeof window.__s_handleDispatch === "function") {
+                    window.__s_handleDispatch(
+                        { channel_id: channelId, id: messageId, content: newContent },
+                        "MESSAGE_UPDATE",
+                        {}
+                    );
+                }
 
                 /* eslint-enable */
             },
-            data,
+            channelId,
+            messageId,
             newContent
         );
     }
@@ -991,37 +1006,33 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
     async _waitForMessageContent(channelId, messageId, expectedContent, replacedText, timeout = 3000) {
         const messageSelector = Util.getMessageSelector(channelId, messageId);
 
-        await this._dpage
-            .waitForFunction(
-                (sel, messageId, expected, replaced) => {
-                    /* eslint-disable */
+        await this._dpage.waitForFunction(
+            (sel, messageId, expected, replaced) => {
+                /* eslint-disable */
 
-                    const el = document.querySelector(sel);
-                    if (el === null) return false;
+                const el = document.querySelector(sel);
+                if (el === null) return false;
 
-                    const content = el.querySelector(`[id="message-content-${messageId}"]`);
-                    if (content === null) return false;
+                const content = el.querySelector(`[id="message-content-${messageId}"]`);
+                if (content === null) return false;
 
-                    const text = content.textContent ?? "",
-                        inner = content.innerText ?? "";
+                const text = content.textContent ?? "",
+                    inner = content.innerText ?? "";
 
-                    if (typeof replaced === "string" && replaced.length > 0) {
-                        if (text.includes(replaced) || inner.includes(replaced)) return true;
-                    }
+                if (typeof replaced === "string" && replaced.length > 0) {
+                    if (text.includes(replaced) || inner.includes(replaced)) return true;
+                }
 
-                    return (
-                        text.trim() === expected.trim() || inner.trim() === expected.trim() || text.includes(expected)
-                    );
+                return text.trim() === expected.trim() || inner.trim() === expected.trim() || text.includes(expected);
 
-                    /* eslint-enable */
-                },
-                { timeout },
-                messageSelector,
-                messageId,
-                expectedContent,
-                replacedText
-            )
-            .catch(() => {});
+                /* eslint-enable */
+            },
+            { timeout },
+            messageSelector,
+            messageId,
+            expectedContent,
+            replacedText
+        );
     }
 
     async _replaceMessageContent(data, options = {}) {
@@ -1063,7 +1074,15 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
         const elements = [element];
 
         for (const id of messageIds.slice(1)) {
-            await this._waitForMessageRendered(channelId, id, this.retryTimeout);
+            try {
+                await this._waitForMessageRendered(channelId, id, this.retryTimeout);
+            } catch (err) {
+                if (Util.isTimeoutError(err)) {
+                    throw new ScreenshotError(`Message with ID ${id} not found`, id, 404);
+                }
+                throw err;
+            }
+
             const messageSelector = Util.getMessageSelector(channelId, id);
             elements.push(await this._dpage.$(messageSelector));
         }
