@@ -12,6 +12,8 @@
     "maxNavRetries": 3,
     "retryTimeout": 5000,
     "retryDelay": 500,
+    "sedTimeout": 1000,
+    "maxSedRetries": 3,
     "maxCrashRetries": 3,
     "allowLocalhostRequests": false,
     "window": {

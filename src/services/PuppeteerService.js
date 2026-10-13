@@ -30,6 +30,22 @@ class PuppeteerService {
     static rectSizeCap = 2 ** 15;
     static minMessageWidth = 500;
 
+    static barSelectors = [
+        '[class*="newMessagesBar"]',
+        '[class*="jumpToPresentBar"]',
+        '[class*="barBase"]',
+        '[class*="messagesErrorBar"]',
+        '[class*="newMessagesPill"]',
+        '[class*="isUnread"]',
+        '[class*="unreadPill"]',
+        '[class*="unreadPillCap"]',
+        '[class*="unreadPillCapStroke"]',
+        '[id*="new-messages"]',
+        '[id="---new-messages-bar"]',
+        '[data-list-item-id*="divider"]',
+        '[class*="divider"]'
+    ];
+
     static get profilePictureSelector() {
         return '[class*="avatar_"]';
     }
@@ -89,6 +105,8 @@ class PuppeteerService {
         this.maxNavRetries = config.maxNavRetries;
         this.retryTimeout = config.retryTimeout;
         this.retryDelay = config.retryDelay;
+        this.sedTimeout = config.sedTimeout;
+        this.maxSedRetries = config.maxSedRetries;
 
         this.headless = config.headless;
 
@@ -237,15 +255,6 @@ class PuppeteerService {
         try {
             await this._setZoom(this._dpage);
 
-            if (multipleMessages) {
-                await this._instantScroll(this._dpage, messageSelectors[0]);
-            } else {
-                await this._ensureInViewport(message);
-            }
-
-            await this._waitForMediaLoaded(message);
-            await this._hideExcept(this._dpage, messageSelectors);
-
             if (replaceContent) {
                 messageData = await this._fetchCachedMessage(channelId, firstId);
                 ({ originalContent } = await this._replaceMessageContent(messageData, sedOpts));
@@ -253,7 +262,16 @@ class PuppeteerService {
             }
 
             if (multipleMessages) {
+                await this._instantScroll(this._dpage, messageSelectors[0]);
                 screenshotOpts.clip = await this._getMessagesRect(message, channelId, messageIds);
+            } else {
+                await this._ensureInViewport(message);
+            }
+
+            await this._waitForMediaLoaded(message);
+            await this._hideExcept(this._dpage, messageSelectors);
+
+            if (multipleMessages) {
                 imageData = await this._dpage.screenshot(screenshotOpts);
             } else {
                 imageData = await message.screenshot(screenshotOpts);
@@ -746,17 +764,21 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
     async _hideExcept(page, selectors) {
         if (!Array.isArray(selectors)) selectors = [selectors];
 
-        const barSelectors = [
-            '[class*="newMessagesBar"]',
-            '[class*="jumpToPresentBar"]',
-            '[class*="barBase"]',
-            '[class*="messagesErrorBar"]',
-            '[class*="newMessagesPill"]'
-        ];
-
         await page.evaluate(
             (selectors, barSelectors) => {
                 /* eslint-disable */
+
+                const styleId = "__puppeteer_hide_bars";
+
+                let style = document.getElementById(styleId);
+
+                if (!style) {
+                    style = document.createElement("style");
+                    style.id = styleId;
+                    document.head.appendChild(style);
+                }
+
+                style.textContent = `${barSelectors.join(", ")} { display: none !important; }`;
 
                 document.querySelectorAll("body *").forEach(el => {
                     const isTarget = selectors.some(sel => el.matches(sel)),
@@ -769,17 +791,13 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
                 });
 
                 document.querySelectorAll(barSelectors.join(", ")).forEach(bar => {
-                    const isTarget = selectors.some(sel => bar.matches(sel) || bar.closest(sel));
-
-                    if (!isTarget) {
-                        bar.style.setProperty("display", "none", "important");
-                    }
+                    bar.style.setProperty("display", "none", "important");
                 });
 
                 /* eslint-enable */
             },
             selectors,
-            barSelectors
+            PuppeteerService.barSelectors
         );
     }
 
@@ -1003,7 +1021,7 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
         );
     }
 
-    async _waitForMessageContent(channelId, messageId, expectedContent, replacedText, timeout = 3000) {
+    async _waitForMessageContent(channelId, messageId, expectedContent, replacedText, timeout = this.sedTimeout) {
         const messageSelector = Util.getMessageSelector(channelId, messageId);
 
         await this._dpage.waitForFunction(
@@ -1016,6 +1034,49 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
                 const content = el.querySelector(`[id="message-content-${messageId}"]`);
                 if (content === null) return false;
 
+                const getRealContent = (el, contentEl) => {
+                    for (const target of [contentEl, el]) {
+                        if (!target) continue;
+
+                        const propKey = Object.keys(target).find(k => k.startsWith("__reactProps$"));
+                        if (propKey && target[propKey]) {
+                            const p = target[propKey];
+
+                            if (typeof p.message?.content === "string") return p.message.content;
+
+                            if (typeof p.children?.props?.message?.content === "string") {
+                                return p.children.props.message.content;
+                            }
+                        }
+
+                        const fiberKey = Object.keys(target).find(k => k.startsWith("__reactFiber$"));
+
+                        if (fiberKey && target[fiberKey]) {
+                            let curr = target[fiberKey],
+                                depth = 0;
+
+                            while (curr && depth < 20) {
+                                if (typeof curr.memoizedProps?.message?.content === "string") {
+                                    return curr.memoizedProps.message.content;
+                                }
+
+                                curr = curr.return;
+                                depth++;
+                            }
+                        }
+                    }
+
+                    return null;
+                };
+
+                const real = getRealContent(el, content);
+                if (typeof real === "string") {
+                    if (typeof replaced === "string" && replaced.length > 0 && real.includes(replaced)) {
+                        return true;
+                    }
+                    if (real === expected) return true;
+                }
+
                 const text = content.textContent ?? "",
                     inner = content.innerText ?? "";
 
@@ -1023,7 +1084,29 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
                     if (text.includes(replaced) || inner.includes(replaced)) return true;
                 }
 
-                return text.trim() === expected.trim() || inner.trim() === expected.trim() || text.includes(expected);
+                const normalize = s =>
+                    s
+                        .replace(/\r\n/g, "\n")
+                        .replace(/[ \t]+/g, " ")
+                        .trim();
+
+                const normExpected = normalize(expected),
+                    normText = normalize(text),
+                    normInner = normalize(inner);
+
+                if (normText === normExpected || normInner === normExpected) return true;
+                if (normText.includes(normExpected) || normInner.includes(normExpected)) return true;
+
+                const expectedLines = expected
+                    .split(/\r?\n/)
+                    .map(l => l.trim())
+                    .filter(l => l.length > 0);
+
+                if (expectedLines.length > 0 && expectedLines.every(l => inner.includes(l) || text.includes(l))) {
+                    return true;
+                }
+
+                return false;
 
                 /* eslint-enable */
             },
@@ -1064,8 +1147,27 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
             throw new ScreenshotError("Can't edit with empty content", undefined, 422);
         }
 
-        await this._setMessageContent(data, newContent);
-        await this._waitForMessageContent(data.channel_id, data.id, newContent, replace);
+        const channelId = data.channel_id ?? data.channelId,
+            messageId = data.id ?? data.messageId;
+
+        for (let attempt = 1; attempt <= this.maxSedRetries; attempt++) {
+            await this._setMessageContent(data, newContent);
+
+            try {
+                await this._waitForMessageContent(channelId, messageId, newContent, replace, this.sedTimeout);
+                break;
+            } catch (err) {
+                if (PuppeteerService.isCrashError(err)) throw err;
+
+                if (attempt < this.maxSedRetries) {
+                    logger.warn(`Sed replacement attempt ${attempt}/${this.maxSedRetries} failed, retrying...`, err);
+                    await Util.delay(this.retryDelay);
+                    continue;
+                }
+
+                throw err;
+            }
+        }
 
         return { originalContent, newContent };
     }

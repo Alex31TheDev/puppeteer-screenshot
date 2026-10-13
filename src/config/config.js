@@ -42,6 +42,8 @@ class Config {
         maxNavRetries: { type: "integer", min: 1, default: 3 },
         retryTimeout: { type: "integer", min: 1, default: 5000 },
         retryDelay: { type: "integer", min: 0, default: 500 },
+        sedTimeout: { type: "integer", min: 1, default: 1000 },
+        maxSedRetries: { type: "integer", min: 1, default: 3 },
         maxCrashRetries: { type: "integer", min: 1, default: 3 },
         allowLocalhostRequests: { type: "boolean", default: false },
         tokenTtl: { type: "string", default: "30d" },
