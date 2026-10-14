@@ -33,7 +33,7 @@ function screenshot(serverId, channelId, messageIds, sedOpts) {
         data.sed = sedOpts;
     }
 
-    const image = http.request({
+    const res = http.request({
         url: api + "/messageScreenshot",
         method: "post",
         responseType: "arraybuffer",
@@ -43,19 +43,33 @@ function screenshot(serverId, channelId, messageIds, sedOpts) {
         },
 
         data
-    }).data;
+    });
 
-    return image instanceof ArrayBuffer ? new Uint8Array(image) : image;
+    const image = res.data,
+        body = image instanceof ArrayBuffer ? new Uint8Array(image) : image,
+        pfpHeader = res.headers["x-profile-picture-rect"];
+
+    let pfpRect = null;
+
+    if (pfpHeader) {
+        try {
+            pfpRect = JSON.parse(pfpHeader);
+        } catch {
+            pfpRect = null;
+        }
+    }
+
+    return [body, pfpRect];
 }
 
 function wrappedScreenshot(...args) {
-    const data = screenshot(...args);
-    if (data[0] !== "{".charCodeAt(0)) return [data, null];
+    const [data, pfpRect] = screenshot(...args);
+    if (data[0] !== "{".charCodeAt(0)) return [data, null, pfpRect];
 
     const parsedData = JSON.parse(bytesToString(data));
-    if (!parsedData?.error) return [null, null];
+    if (!parsedData?.error) return [null, null, null];
 
-    return [null, parsedData.error];
+    return [null, parsedData.error, null];
 }
 
 function getMessageWindow(messageId, limit) {
