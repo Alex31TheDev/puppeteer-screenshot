@@ -115,36 +115,71 @@ const tagName = msg.content.split(" ")[1],
 
 const isSedCall = realTag.hops.some(hop => sedTags.includes(hop));
 
-const sedRegex = /^\/((?:\\\/|[^/])+)\/((?:\\\/|[^/])*)(?:\/([gimsuy]*))?$/s;
+const sedRegex =
+    /(?:^(?:sed)?\/|\s+(?:sed)?\/)(?<regex_text>(?:\\.|[^/])+)\/(?<replace>(?:\\.|[^/])*)\/?(?<flags_text>(?:\\.|[^/])+?)?(?=\s|$)/gi;
+
+const defaultFlags = "i",
+    flagsRegex = /^[gimsuy]*$/;
 
 const usage1 = "Please provide a replacement string, e.g., `/find/replace`",
     usage2 = "Please use `/find/replace` or `/find/replace/flags`";
+
+function parsePattern(str = "") {
+    return str.replace(/^`{1,3}|`{1,3}$/g, "").replaceAll("\\/", "/");
+}
+
+function validFlags(flags) {
+    return flagsRegex.test(flags) && new Set(flags).size === flags.length;
+}
+
+function parseRule(match, i, singleRule) {
+    if (!match.groups) {
+        return [null, `:warning: Encountered invalid args.\n${usage2}`];
+    }
+
+    const regexText = parsePattern(match.groups.regex_text),
+        replace = parsePattern(match.groups.replace);
+
+    const rawFlags = match.groups.flags_text ?? defaultFlags,
+        flags = parsePattern(rawFlags).toLowerCase();
+
+    const expStr = !singleRule && typeof i === "number" ? ` for expression **${i + 1}**` : "";
+
+    if (!validFlags(flags)) {
+        return [null, `:warning: Invalid regex flags${expStr}.\n${usage2}`];
+    }
+
+    try {
+        new RegExp(regexText, flags);
+    } catch {
+        return [null, `:warning: Invalid regex or flags${expStr}.\n${usage2}`];
+    }
+
+    return [{ regex: regexText, replace, flags }, null];
+}
 
 function parseSedArgs() {
     if (!tag.args) {
         return [null, `:information_source: ${usage1}`];
     }
 
-    const match = tag.args.match(sedRegex);
+    const matches = Array.from(tag.args.matchAll(sedRegex));
 
-    if (!match) {
+    if (matches.length === 0) {
         return [null, `:warning: Encountered invalid args.\n${usage2}`];
     }
 
-    const [, regex, replace, flags] = match,
-        regexUnescaped = regex.replace(/\\\//g, "/"),
-        replaceUnescaped = replace.replace(/\\\//g, "/");
+    const singleRule = matches.length === 1,
+        rules = [];
 
-    const sedOpts = {
-        regex: regexUnescaped,
-        replace: replaceUnescaped
-    };
+    for (let i = 0; i < matches.length; i++) {
+        const [rule, err] = parseRule(matches[i], i, singleRule);
+        if (err !== null) return [null, err];
 
-    if (flags) {
-        sedOpts.flags = flags;
+        rules.push(rule);
     }
 
-    return [sedOpts, null];
+    return [singleRule ? rules[0] : rules, null];
 }
 
 let serverId = msg.guildId,

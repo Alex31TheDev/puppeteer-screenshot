@@ -16,6 +16,7 @@ import logger from "../logger/logger.js";
 
 import Util from "../util/Util.js";
 import ImageUtil from "../util/ImageUtil.js";
+import RegexUtil from "../util/RegexUtil.js";
 
 import ScreenshotError from "../errors/ScreenshotError.js";
 
@@ -1121,27 +1122,42 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
     async _replaceMessageContent(data, options = {}) {
         if (data === null) return { originalContent: null, newContent: null };
 
-        let { regex: regexStr, flags: flagsStr, replace } = options;
-        flagsStr ||= PuppeteerService._defaultSedFlags;
+        const rules = Array.isArray(options) ? options : [options];
 
-        let regex = null;
+        const parsedRules = rules.map((rule, idx) => {
+            const regexStr = rule.regex,
+                flagsStr = rule.flags ?? PuppeteerService._defaultSedFlags,
+                replace = rule.replace;
 
-        try {
-            regex = new RE2(regexStr, flagsStr);
-        } catch (err) {
-            if (err instanceof SyntaxError) {
-                throw new ScreenshotError("Invalid regex or flags", { regexStr, flagsStr }, 400);
+            try {
+                const regex = new RE2(regexStr, flagsStr);
+                return [regex, replace];
+            } catch (err) {
+                if (err instanceof SyntaxError) {
+                    throw new ScreenshotError(
+                        "Invalid regex or flags",
+                        { i: rules.length > 1 ? idx : undefined, regexStr, flagsStr },
+                        400
+                    );
+                }
+
+                throw err;
             }
+        });
 
-            throw err;
-        }
+        const singleRule = parsedRules.length === 1,
+            mergedRegex = singleRule ? parsedRules[0][0] : RegexUtil.getMergedRegex(parsedRules.map(r => r[0]));
 
         let originalContent = data.content,
             newContent = null;
 
-        if (!regex.test(originalContent)) {
-            throw new ScreenshotError("No matching text found", { regex, content: originalContent }, 422);
-        } else newContent = originalContent.replace(regex, replace);
+        if (!mergedRegex.test(originalContent)) {
+            throw new ScreenshotError("No matching text found", { regex: mergedRegex, content: originalContent }, 422);
+        }
+
+        newContent = singleRule
+            ? originalContent.replace(parsedRules[0][0], parsedRules[0][1])
+            : RegexUtil.multipleReplace(originalContent, parsedRules);
 
         if (newContent.length < 1) {
             throw new ScreenshotError("Can't edit with empty content", undefined, 422);
@@ -1150,11 +1166,13 @@ The provided Discord token is likely invalid. Try updating it then restarting.`)
         const channelId = data.channel_id ?? data.channelId,
             messageId = data.id ?? data.messageId;
 
+        const replaceHint = singleRule ? parsedRules[0][1] : null;
+
         for (let attempt = 1; attempt <= this.maxSedRetries; attempt++) {
             await this._setMessageContent(data, newContent);
 
             try {
-                await this._waitForMessageContent(channelId, messageId, newContent, replace, this.sedTimeout);
+                await this._waitForMessageContent(channelId, messageId, newContent, replaceHint, this.sedTimeout);
                 break;
             } catch (err) {
                 if (PuppeteerService.isCrashError(err)) throw err;

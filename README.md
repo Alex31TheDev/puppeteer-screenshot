@@ -110,7 +110,7 @@ Available when `discordToken` is set in `config/auth.json`. Navigates to a Disco
 - `channelId` (string, required): Discord channel ID.
 - `messageId` (string | string[], required): A single message ID or an array of contiguous message IDs (up to 25). `messageIds` is also accepted as an alias.
 - `trim` (boolean, optional, default `true`): Trims surrounding transparent and solid-color background padding down to the message content.
-- `sed` (object, optional): Replaces text in the message DOM via Discord's internal update dispatcher before capturing, then reverts it afterwards:
+- `sed` (object | object[], optional): Replaces text in the message DOM via Discord's internal update dispatcher before capturing, then reverts it afterwards. Accepts a single rule or an array of rules:
     - `regex` (string, required): RE2 regular expression to match against the message text.
     - `replace` (string, required): Replacement text.
     - `flags` (string, optional, default `"i"`): Regex flags (e.g. `"g"`, `"i"`, `"m"`).

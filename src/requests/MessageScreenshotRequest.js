@@ -46,19 +46,26 @@ class MessageScreenshotRequest {
     static _sed(sed) {
         if (sed == null) return;
 
-        if (Array.isArray(sed) || typeof sed !== "object") {
-            throw new RequestError("The sed option must be an object");
-        }
-
-        const { regex, flags = "i", replace } = sed;
+        const rules = Array.isArray(sed) ? sed : [sed];
 
         if (
-            ![regex, flags, replace].every(value => typeof value === "string") ||
-            regex.length > 1024 ||
-            flags.length > 16 ||
-            replace.length > 8192
+            rules.length === 0 ||
+            !rules.every(rule => rule !== null && typeof rule === "object" && !Array.isArray(rule))
         ) {
-            throw new RequestError("The sed option requires string regex, flags, and replace values");
+            throw new RequestError("The sed option must be an object or an array of objects");
+        }
+
+        for (const rule of rules) {
+            const { regex, flags = "i", replace } = rule;
+
+            if (
+                ![regex, flags, replace].every(value => typeof value === "string") ||
+                regex.length > 1024 ||
+                flags.length > 16 ||
+                replace.length > 8192
+            ) {
+                throw new RequestError("The sed option requires string regex, flags, and replace values");
+            }
         }
     }
 }

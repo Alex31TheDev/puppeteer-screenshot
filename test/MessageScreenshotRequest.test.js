@@ -62,3 +62,39 @@ test("MessageScreenshotRequest rejects non-object sed", () => {
         /The sed option must be an object/
     );
 });
+
+test("MessageScreenshotRequest accepts array of valid sed options", () => {
+    const rules = [
+        { regex: "foo", replace: "bar", flags: "g" },
+        { regex: "baz", replace: "qux", flags: "i" }
+    ];
+
+    const data = MessageScreenshotRequest.from({
+        serverId: "123",
+        channelId: "456",
+        messageId: "789",
+        sed: rules
+    });
+
+    assert.deepEqual(data.sed, rules);
+});
+
+test("MessageScreenshotRequest rejects empty array of sed options", () => {
+    assert.throws(
+        () => MessageScreenshotRequest.from({ serverId: "123", channelId: "456", messageId: "789", sed: [] }),
+        /The sed option must be an object/
+    );
+});
+
+test("MessageScreenshotRequest rejects array with invalid sed rule types", () => {
+    assert.throws(
+        () =>
+            MessageScreenshotRequest.from({
+                serverId: "123",
+                channelId: "456",
+                messageId: "789",
+                sed: [{ regex: 123, replace: "bar" }]
+            }),
+        /The sed option requires string regex, flags, and replace values/
+    );
+});
