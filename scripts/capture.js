@@ -5,8 +5,8 @@ const api = "http://[IP_ADDRESS]",
 
 const sedTags = ["g:better-better-sed", "g:bbsed", "g:bbs"];
 
-const allowServerId = "927050775073534012",
-    allowServerName = "Nomi";
+const allowedServerIds = new Set(["927050775073534012", "1268768059489783838"]),
+    allowedServerNames = ["Nomi", "MONI"];
 
 const trim = true,
     messageLimit = 3;
@@ -186,9 +186,21 @@ let serverId = msg.guildId,
     channelId = msg.channelId,
     messageId = msg.reference?.messageId;
 
+function formatAllowedServers(names) {
+    const boldNames = names.map(name => `**${name}**`);
+
+    if (boldNames.length <= 1) {
+        return boldNames[0] ?? "";
+    } else if (boldNames.length === 2) {
+        return `${boldNames[0]} or ${boldNames[1]}`;
+    } else {
+        return `${boldNames.slice(0, -1).join(", ")}, or ${boldNames[boldNames.length - 1]}`;
+    }
+}
+
 function main() {
-    if (serverId !== allowServerId) {
-        return `:information_source: This tag only works in **${allowServerName}**.`;
+    if (!allowedServerIds.has(serverId)) {
+        return `:information_source: This tag only works in ${formatAllowedServers(allowedServerNames)}.`;
     } else if (typeof messageId === "undefined") {
         const action = isSedCall ? "sed replace" : "screenshot";
         return `:information_source: You need to **reply** to a message in order to **${action}** it.`;
