@@ -98,7 +98,6 @@ class ConfigSchema {
             }
 
             const items = val.map(item => item.trim());
-
             return Object.freeze(unique ? [...new Set(items)] : items);
         }
 
@@ -160,7 +159,6 @@ class ConfigSchema {
 
         for (const [key, def] of Object.entries(fields)) {
             const fieldName = Util.nonemptyString(name) ? `${name}.${key}` : key;
-
             res[key] = this._validateField(raw[key], fieldName, def);
         }
 

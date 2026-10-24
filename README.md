@@ -126,6 +126,7 @@ Available when `discordToken` is set in `config/auth.json`. Navigates to a Disco
 
 Settings in `config/config.json`:
 
+- `host` (string, default: `"0.0.0.0"`): Host interface for the HTTP server to bind.
 - `port` (number, default: `3000`): Port for the HTTP server.
 - `logLevel` (string, default: `"info"`): Logging level (`error`, `warn`, `info`, `debug`).
 - `screenshotDir` (string, default: `"./screenshots"`): Temporary directory where screenshots are written.

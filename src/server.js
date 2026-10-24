@@ -51,11 +51,12 @@ function setupRoutes() {
 }
 
 function startListening() {
-    const port = config.port;
+    const host = config.host,
+        port = config.port;
 
     return new Promise((resolve, reject) => {
-        const server = app.listen(port, () => {
-            logger.info(`Server running at: http://localhost:${port}`);
+        const server = app.listen(port, host, () => {
+            logger.info(`Server running at: http://${host}:${port}`);
             resolve(server);
         });
 

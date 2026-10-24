@@ -10,6 +10,7 @@ class Config {
     static schema = new ConfigSchema({
         logDir: { type: "path", default: "./logs" },
         logLevel: { type: "string", default: "info" },
+        host: { type: "string", default: "0.0.0.0" },
         port: { type: "integer", min: 1, max: 65535, default: 3000 },
         bodyLimit: { type: "string", default: "32kb" },
         screenshotDir: { type: "path", default: "./screenshots" },

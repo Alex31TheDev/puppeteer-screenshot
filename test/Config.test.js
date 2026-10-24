@@ -9,6 +9,7 @@ import ConfigError from "../src/errors/ConfigError.js";
 const Config = config.constructor;
 
 test("Config loads active config.json correctly", () => {
+    assert.equal(config.host, "0.0.0.0");
     assert.equal(typeof config.port, "number");
     assert.ok(config.port > 0);
     assert.equal(typeof config.headless, "boolean");
@@ -31,6 +32,7 @@ test("Config.load throws ConfigError for missing or invalid files", () => {
 test("Config.schema validates and applies defaults on minimal object", () => {
     const minimal = Config.schema.validate({});
 
+    assert.equal(minimal.host, "0.0.0.0");
     assert.equal(minimal.port, 3000);
     assert.equal(minimal.logLevel, "info");
     assert.equal(minimal.headless, true);

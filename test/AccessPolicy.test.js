@@ -113,7 +113,7 @@ test("UserStore loads test user with configured server whitelist", async () => {
 
     assert.ok(user !== null);
     assert.equal(user.username, "test");
-    assert.deepEqual(user.allowedServers, ["927050775073534012"]);
+    assert.deepEqual(user.allowedServers, ["927050775073534012", "1268768059489783838"]);
     assert.deepEqual(user.allowedChannels, []);
     assert.ok(user.accessPolicy instanceof AccessPolicy);
 
